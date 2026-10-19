@@ -55,6 +55,20 @@ and raw/track operation on its own.
 | Seeed Studio XIAO ESP32 | USB-CDC bridge between the PC and the radar UART |
 | USB cable | Data cable, not charge-only |
 
+### Where to buy
+
+| <a href="https://espsoup.com/go/mr60bha2"><img src="https://espsoup.com/amzimg/mr60bha2" width="170" alt="Seeed Studio MR60BHA2 60 GHz mmWave kit"></a> |
+|:---:|
+| **Seeed Studio MR60BHA2 60 GHz mmWave kit** |
+| XIAO ESP32-C6 + HLK-LD6002 radar, ready to use as the bridge described here |
+| [View on Amazon](https://espsoup.com/go/mr60bha2) |
+
+USB-C data cable: [Amazon](https://espsoup.com/go/cable1) · [AliExpress](https://s.click.aliexpress.com/e/_c3qthcml)
+
+<sub>**Ad** · affiliate links: Amazon, AliExpress. I may earn a commission on qualifying purchases at no extra cost
+to you. As an Amazon Associate I earn from qualifying purchases. Product photo from Amazon. Check the product details
+before you buy.</sub>
+
 Wire the radar UART to the XIAO (radar TX → XIAO RX, radar RX → XIAO TX, common
 ground) and power the module according to its datasheet. The bridge enumerates
 as a COM port on Windows (for example `COM3`).
