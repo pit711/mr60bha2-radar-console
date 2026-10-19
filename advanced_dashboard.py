@@ -66,7 +66,8 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 import radar_tf as d  # noqa: E402  (TFParser, build_frame, decode, COMMANDS)
-from firmware_vault import FirmwareVault, inspect_image  # noqa: E402
+from firmware_vault import (FirmwareVault, device_version, inspect_image,  # noqa: E402
+                            match_device_version)
 
 HTML_PATH = HERE / "advanced_dashboard.html"
 FLASHER_PATH = HERE / "webflasher.html"
@@ -76,6 +77,9 @@ SNAP_DIR = HERE / "snapshots"
 TUNING_DIR = HERE / "tuning" / "dashboard"
 VAULT_DIR = HERE / "firmware_vault"
 FIRMWARE_OUT_DIR = HERE / "firmware_out"
+FIRMWARE_IN_DIR = HERE / "firmware_in"
+FW_WATCH_POLL_S = 1.0      # inbox poll interval (dependency-free)
+FW_WATCH_SETTLE_S = 1.5    # folder must stay unchanged this long before a scan
 MAX_FIRMWARE_UPLOAD = 8 * 1024 * 1024 + 64 * 1024
 RAW_TYPES = (0x0A32, 0x0A34)
 BLOCKED_TYPES = {0x3000, 0x4000}
@@ -224,6 +228,9 @@ DEFAULT_CONFIG: dict[str, object] = {
     "fw_allow_rf": False,
     "fw_allow_unsafe": False,
     "fw_out_dir": "tuning/dashboard",
+    # Automatic safeguard: watch firmware_in/, verify images, match the
+    # connected radar version and write a receipt. Never reads or writes flash.
+    "fw_auto_safeguard": True,
 }
 
 CLAMPS: dict[str, tuple[float, float]] = {
@@ -588,7 +595,8 @@ def make_point_frame(points: list[dict]) -> bytes:
 class Engine:
     def __init__(self, cfg: dict, source: str = "serial", replay_path: Path | None = None,
                  replay_speed: float = 1.0, config_path: Path = CONFIG_PATH,
-                 start_threads: bool = True, vault_dir: Path | None = None) -> None:
+                 start_threads: bool = True, vault_dir: Path | None = None,
+                 firmware_in_dir: Path | None = None) -> None:
         self.cfg = copy.deepcopy(cfg)
         self.defaults = copy.deepcopy(DEFAULT_CONFIG)
         self.config_path = config_path
@@ -596,6 +604,10 @@ class Engine:
         self.replay_path = Path(replay_path) if replay_path else None
         self.replay_speed = max(0.05, float(replay_speed))
         self.vault = FirmwareVault(Path(vault_dir) if vault_dir else VAULT_DIR)
+        self.fw_in_dir = Path(firmware_in_dir if firmware_in_dir else FIRMWARE_IN_DIR).resolve()
+        self.fw_in_dir.mkdir(parents=True, exist_ok=True)
+        self.fw_auto_lock = threading.Lock()
+        self.auto_threads = bool(start_threads)
 
         self.lock = threading.RLock()
         self.dsp_lock = threading.Lock()
@@ -607,6 +619,7 @@ class Engine:
         self.stream_thread: threading.Thread | None = None
         self.demo_thread: threading.Thread | None = None
         self.replay_thread: threading.Thread | None = None
+        self.fw_watch_thread: threading.Thread | None = None
         self.ser = None
         self.parser = None
         self.connected = False
@@ -627,6 +640,8 @@ class Engine:
 
         self.raw: dict[int, tuple[float, float, bytes]] = {}
         self.version = "–"
+        self.version_raw: bytes | None = None
+        self.version_at: float | None = None
         self.status = None
         self.presence = None
         self.distance_cm = None
@@ -686,10 +701,44 @@ class Engine:
         self.last_mode_cmd_t = 0.0
         self.last_auto_record_t = 0.0
         self.last_patch: dict | None = None
+        self.fw_auto_last_start = 0.0
+        self.fw_auto_state: dict = {
+            "enabled": bool(self.cfg.get("fw_auto_safeguard", True)),
+            "inbox": str(self.fw_in_dir),
+            "vault": str(self.vault.root),
+            "scanning": False,
+            "scan_seq": 0,
+            "last_scan": None,
+            "last_reason": "",
+            "source": self.source_label,
+            "live_device": self.source in ("serial", "selftest"),
+            "imported": [],
+            "skipped": [],
+            "imported_count": 0,
+            "skipped_count": 0,
+            "device_version": None,
+            "device_version_raw": None,
+            "matched": None,
+            "basis": None,
+            "receipt": self.vault.get_safeguard(),
+            "error": None,
+        }
 
         self.log("info", f"Advanced Radar Console {APP_VERSION} started "
                          f"(source: {self.source_label})")
+        if self.cfg.get("fw_auto_safeguard", True):
+            self.log("info", f"Firmware safeguard active – watching {self.fw_in_dir}")
+            if start_threads:
+                threading.Thread(target=self.auto_safeguard,
+                                 kwargs={"reason": "startup"}, daemon=True,
+                                 name="fw-auto-startup").start()
+            else:
+                self.auto_safeguard(reason="startup")
         if start_threads:
+            self.fw_watch_thread = threading.Thread(target=self._fw_watch_loop,
+                                                    name="fw-inbox-watch",
+                                                    daemon=True)
+            self.fw_watch_thread.start()
             self.stream_thread = threading.Thread(target=self._stream_loop,
                                                   name="stream", daemon=True)
             self.stream_thread.start()
@@ -825,6 +874,8 @@ class Engine:
                 info = {}
             if ftype == 0xFFFF and len(payload) >= 4:
                 self.version = ".".join(str(b) for b in payload[:4])
+                self.version_raw = bytes(payload[:4])
+                self.version_at = now
             elif ftype == 0x0A04:
                 pts = info.get("points", []) if info else []
                 for p in pts[:5000]:
@@ -867,6 +918,192 @@ class Engine:
                 self.on_text(info.get("text", ""))
             elif ftype in BLOCKED_TYPES:
                 self.log("warn", f"Frame {ftype:#06x} received (bootloader/update) – ignored")
+        if (ftype == 0xFFFF and len(payload) >= 4 and self.auto_threads
+                and self.cfg.get("fw_auto_safeguard", True)):
+            threading.Thread(target=self.auto_safeguard,
+                             kwargs={"reason": "device-version"}, daemon=True,
+                             name="fw-auto-version").start()
+
+    # ------------------------------------------------------------------
+    # Automatic firmware safeguard
+    # ------------------------------------------------------------------
+    def firmware_auto_status(self) -> dict:
+        """JSON-safe snapshot of the automatic safeguard state."""
+        with self.lock:
+            state = copy.deepcopy(self.fw_auto_state)
+            state["enabled"] = bool(self.cfg.get("fw_auto_safeguard", True))
+            state["inbox"] = str(self.fw_in_dir)
+            state["vault"] = str(self.vault.root)
+            state["source"] = self.source_label
+            state["live_device"] = self.source in ("serial", "selftest")
+            state["device_version"] = device_version(self.version_raw)
+            state["device_version_raw"] = (self.version_raw.hex().upper()
+                                           if self.version_raw else None)
+        return state
+
+    def auto_safeguard(self, reason: str = "manual") -> dict:
+        """Scan the inbox, verify full images and match the device version.
+
+        This is a local file scan plus a version comparison. It never opens a
+        serial port, never reads or writes radar flash, and never flashes.
+        """
+        enabled = bool(self.cfg.get("fw_auto_safeguard", True))
+        if not enabled and reason != "manual":
+            return self.firmware_auto_status()
+        if reason == "device-version":
+            # The radar reports its version only once. Wait for a running
+            # scan and the short dedupe window instead of dropping the match.
+            wait = self.fw_auto_last_start + 1.0 - time.time()
+            if wait > 0:
+                time.sleep(wait)
+            acquired = self.fw_auto_lock.acquire(timeout=5.0)
+        else:
+            acquired = self.fw_auto_lock.acquire(blocking=False)
+        if not acquired:
+            return self.firmware_auto_status()
+        try:
+            self.fw_auto_last_start = time.time()
+            with self.lock:
+                self.fw_auto_state["scanning"] = True
+                self.fw_auto_state["last_reason"] = reason
+            try:
+                results = self.vault.import_folder(
+                    self.fw_in_dir, note="automatic intake from firmware_in/")
+                imported = [r for r in results if r.get("ok")]
+                skipped = [r for r in results if not r.get("ok")]
+                raw = self.version_raw
+                info = device_version(raw)
+                images = self.vault.list()
+                matched = match_device_version(images, raw)
+                receipt = None
+                basis = None
+                # A receipt is only meaningful for a live serial radar (or the
+                # internal self-test). Demo and replay data must never create one.
+                live_device = self.source in ("serial", "selftest")
+                if info is not None and live_device:
+                    basis = "version-match" if matched else "no-matching-image"
+                    receipt = self.vault.record_safeguard(
+                        {
+                            "port": self.port,
+                            "connected": bool(self.connected),
+                            "version_raw": info["raw"],
+                            "version": info["version"],
+                            "reply": info["full"],
+                        },
+                        matched, basis,
+                        note=("Automatic version match. The UART bootloader is "
+                              "receive-only; this receipt is not a chip dump."))
+                matched_summary = None
+                if matched and live_device:
+                    matched_summary = {
+                        "id": matched.get("id"),
+                        "file": matched.get("file"),
+                        "original_name": matched.get("original_name"),
+                        "sha256": matched.get("sha256"),
+                        "size": matched.get("size"),
+                        "known_base": matched.get("known_base"),
+                        "source": matched.get("source"),
+                    }
+                with self.lock:
+                    self.fw_auto_state.update({
+                        "imported": imported[:200],
+                        "skipped": skipped[:200],
+                        "imported_count": len(imported),
+                        "skipped_count": len(skipped),
+                        "scan_seq": self.fw_auto_state.get("scan_seq", 0) + 1,
+                        "last_scan": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "last_reason": reason,
+                        "source": self.source_label,
+                        "live_device": live_device,
+                        "device_version": info,
+                        "device_version_raw": info["raw"] if info else None,
+                        "matched": matched_summary,
+                        "basis": basis,
+                        "receipt": receipt or self.vault.get_safeguard(),
+                        "error": None,
+                    })
+                fresh = [r for r in imported if not r.get("duplicate")]
+                for item in fresh[:20]:
+                    self.log("info", f"Firmware safeguard: {item['file']} stored "
+                                     f"in vault ({item['id']})")
+                if len(imported) > len(fresh):
+                    self.log("info", f"Firmware safeguard: "
+                                     f"{len(imported) - len(fresh)} inbox image(s) "
+                                     "already in the vault.")
+                for item in skipped[:10]:
+                    self.log("warn", f"Firmware safeguard skipped {item['file']}: "
+                                     f"{item.get('error')}")
+                if info is None:
+                    self.log("info", f"Firmware safeguard scanned {self.fw_in_dir} "
+                                     f"({len(imported)} imported); waiting for the "
+                                     "radar version.")
+                elif not live_device:
+                    self.log("info", f"Firmware safeguard: {self.source_label} "
+                                     f"reports {info['version']}; no receipt is "
+                                     "written without a live serial device.")
+                elif matched:
+                    self.log("info", f"Firmware safeguard: device {info['version']} "
+                                     f"matches {matched.get('original_name') or matched.get('id')} "
+                                     f"(SHA-256 {str(matched.get('sha256', ''))[:16]}…). "
+                                     "Version match, not a chip dump.")
+                else:
+                    self.log("warn", f"Firmware safeguard: device {info['version']} – "
+                                     "no matching full image in the vault. Place the "
+                                     f"legally obtained vendor image in {self.fw_in_dir}.")
+            except Exception as exc:
+                with self.lock:
+                    self.fw_auto_state["error"] = f"{type(exc).__name__}: {exc}"
+                self.log("warn", f"Firmware safeguard failed: {exc}")
+        finally:
+            with self.lock:
+                self.fw_auto_state["scanning"] = False
+                self.fw_auto_state["enabled"] = bool(
+                    self.cfg.get("fw_auto_safeguard", True))
+            self.fw_auto_lock.release()
+        return self.firmware_auto_status()
+
+    def _inbox_fingerprint(self) -> tuple:
+        """Names, sizes and mtimes of the images currently in the inbox."""
+        try:
+            entries = []
+            for path in sorted(self.fw_in_dir.iterdir()):
+                try:
+                    if path.is_file() and path.suffix.lower() in (".bin", ".img"):
+                        stat = path.stat()
+                        entries.append((path.name, stat.st_size,
+                                        stat.st_mtime_ns))
+                except OSError:
+                    continue  # file vanished while iterating
+            return tuple(entries)
+        except OSError:
+            return ()
+
+    def _fw_watch_loop(self) -> None:
+        """Poll firmware_in/ and take over images added after startup.
+
+        The poll needs no extra dependency. A scan starts only after the
+        folder stayed unchanged for FW_WATCH_SETTLE_S, so a copy that is still
+        in progress is not read half-written. The scan is the same local intake
+        used at startup; it never touches the serial port or the radar flash.
+        """
+        last = self._inbox_fingerprint()
+        changed_at = None
+        while not self.stop_evt.wait(FW_WATCH_POLL_S):
+            current = self._inbox_fingerprint()
+            if current != last:
+                last = current
+                changed_at = time.time()
+                continue
+            if changed_at is None or time.time() - changed_at < FW_WATCH_SETTLE_S:
+                continue
+            if not self.cfg.get("fw_auto_safeguard", True):
+                changed_at = None
+                continue
+            before = self.firmware_auto_status().get("scan_seq", 0)
+            status = self.auto_safeguard(reason="inbox-change")
+            # Retry on the next poll if another scan held the lock.
+            if status.get("scan_seq", 0) != before:
+                changed_at = None
 
     # ------------------------------------------------------------------
     # Serial connection
@@ -1112,7 +1349,8 @@ class Engine:
                 self.on_frame(0, 0x0A04, make_point_frame(pts), b"")
                 self.on_frame(0, 0x0A28, struct.pack("<HHH", 0, 1500, 1500), b"")
                 self.on_frame(0, 0x0A29, struct.pack("<H", 0), b"")
-                self.on_frame(0, 0xFFFF, bytes([1, 6, 12, 0]), b"")
+                # No version frame here: this is synthetic data, and the
+                # safeguard must never write a receipt for a fake device.
             i += 1
             time.sleep(max(0.0, 0.05 - ((time.time() - t0) % 0.05)))
 
@@ -1709,6 +1947,15 @@ class Engine:
             zone = dict(self.zone)
             version = self.version
             status = self.status
+            fw_auto = copy.deepcopy(self.fw_auto_state)
+            fw_auto["enabled"] = bool(cfg.get("fw_auto_safeguard", True))
+            fw_auto["inbox"] = str(self.fw_in_dir)
+            fw_auto["vault"] = str(self.vault.root)
+            fw_auto["source"] = self.source_label
+            fw_auto["live_device"] = self.source in ("serial", "selftest")
+            fw_auto["device_version"] = device_version(self.version_raw)
+            fw_auto["device_version_raw"] = (self.version_raw.hex().upper()
+                                             if self.version_raw else None)
             logs = list(self.logs)[-10:]
             rec_frames = len(self.record)
             rec_source = self.rec_source
@@ -1755,6 +2002,7 @@ class Engine:
             "presence": presence,
             "distance_cm": distance_cm,
             "zone": zone,
+            "firmware": fw_auto,
             "vitals": {
                 "phase": {"total": phase.get("total"), "breath": phase.get("breath"),
                           "heart": phase.get("heart")},
@@ -1856,6 +2104,10 @@ class Engine:
                 self.log("warn", f"Could not save configuration: {exc}")
             self.log("info", "Parameters changed: " + ", ".join(changed[:12]) +
                      (" …" if len(changed) > 12 else ""))
+            if "fw_auto_safeguard" in changed and self.cfg.get("fw_auto_safeguard"):
+                threading.Thread(target=self.auto_safeguard,
+                                 kwargs={"reason": "enabled"}, daemon=True,
+                                 name="fw-auto-enabled").start()
         return True, "OK", changed
 
     def apply_preset(self, name: str) -> tuple[bool, str, list[str]]:
@@ -2265,7 +2517,8 @@ class Engine:
                 self.stop_recording(reason="Shutdown")
             except Exception:
                 pass
-        for thread in (self.worker, self.stream_thread, self.demo_thread, self.replay_thread):
+        for thread in (self.worker, self.stream_thread, self.demo_thread,
+                       self.replay_thread, self.fw_watch_thread):
             if thread and thread.is_alive():
                 thread.join(timeout=1.5)
         self.log("info", "Engine stopped.")
@@ -2357,6 +2610,7 @@ class Handler(BaseHTTPRequestHandler):
                 "source": eng.source_label,
                 "html_path": str(HTML_PATH),
                 "last_patch": eng.last_patch,
+                "firmware": eng.firmware_auto_status(),
                 "logs": list(eng.logs)[-500:],
             })
             return
@@ -2365,6 +2619,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/download":
             self._download(parsed)
+            return
+        if path == "/api/firmware/auto":
+            eng = self.server.engine
+            self._send_json(200, {"ok": True, **eng.firmware_auto_status()})
             return
         if path == "/api/firmware/list":
             eng = self.server.engine
@@ -2408,6 +2666,18 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": ok, "message": msg, "changed": changed,
                 "config": eng.config_snapshot(),
             })
+            return
+        if parsed.path == "/api/firmware/auto":
+            if isinstance(req.get("enabled"), bool):
+                ok, msg, _changed = eng.update_config(
+                    {"fw_auto_safeguard": req["enabled"]})
+                if not ok:
+                    self._send_json(400, {"ok": False, "error": msg})
+                    return
+            auto = (eng.auto_safeguard(reason="manual")
+                    if req.get("scan", True) else eng.firmware_auto_status())
+            self._send_json(200, {"ok": True, "auto": auto,
+                                  "config": eng.config_snapshot()})
             return
         if parsed.path == "/api/firmware/verify":
             image_id = str(req.get("id", "")).strip()
@@ -2640,14 +2910,15 @@ def selftest() -> int:
     cfg["det_enabled"] = True
     eng = Engine(cfg, source="selftest", start_threads=False,
                  config_path=tmp_root / "config.json",
-                 vault_dir=tmp_root / "vault")
+                 vault_dir=tmp_root / "vault",
+                 firmware_in_dir=tmp_root / "inbox")
     rng = np.random.default_rng(42)
     t = 1.0
     p1 = synthetic_raw_payload(rng, t, 8, 32, 1)
     p2 = synthetic_raw_payload(rng, t, 8, 32, 2)
     eng.on_frame(0, 0x0A32, p1, p1)
     eng.on_frame(0, 0x0A34, p2, p2)
-    eng.on_frame(0, 0xFFFF, bytes([1, 6, 12, 0]), b"")
+    eng.on_frame(0, 0xFFFF, bytes([4, 1, 6, 12]), b"")
     eng.on_frame(0, 0x0F09, struct.pack("<H", 1), b"")
     eng.on_frame(0, 0x0A17, struct.pack("<ff", 0.2, 1.4), b"")
     eng.on_frame(0, 0x0A16, struct.pack("<If", 1, 140.0), b"")
@@ -2670,6 +2941,7 @@ def selftest() -> int:
     # Firmware vault and build pipeline (synthetic image, no vendor code)
     vault_ok = False
     firmware_build = False
+    firmware_auto = False
     firmware_error = None
     try:
         sample = make_synthetic_full_image(8)
@@ -2702,6 +2974,25 @@ def selftest() -> int:
             out_root=tmp_root / "out")
         assert not reject_ok, "unknown base accepted without confirmation"
         firmware_build = True
+
+        # Automatic safeguard: inbox intake, version match, receipt.
+        inbox_sample = bytearray(sample)
+        inbox_sample[0x5000] ^= 0xFF  # different hash; header and vectors intact
+        inbox_file = tmp_root / "inbox" / "synthetic-inbox.bin"
+        inbox_file.write_bytes(bytes(inbox_sample))
+        auto = eng.auto_safeguard(reason="selftest")
+        assert auto["imported_count"] == 1, auto
+        assert auto["imported"][0]["ok"] and not auto["imported"][0]["duplicate"], auto
+        assert auto["device_version"]["version"] == "1.6.12", auto["device_version"]
+        assert auto["basis"] == "no-matching-image", auto["basis"]
+        receipt = eng.vault.get_safeguard()
+        assert receipt and receipt["device"]["version"] == "1.6.12", receipt
+        fake = [{"exists": True, "buildable": True,
+                 "known_base": "official-1.6.12", "source": "other",
+                 "imported_at": "2026-01-01T00:00:00"}]
+        assert match_device_version(fake, bytes([4, 1, 6, 12])), "version match failed"
+        assert match_device_version(fake, bytes([4, 1, 6, 13])) is None
+        firmware_auto = True
     except Exception as exc:
         firmware_error = f"{type(exc).__name__}: {exc}"
         print(f"Firmware studio selftest failed: {firmware_error}")
@@ -2714,7 +3005,8 @@ def selftest() -> int:
         html_markers = all(m in html_text for m in (
             'id="heat1"', 'id="heat2"', 'id="waterfall"', 'id="map"',
             'id="surface3d"', 'id="fwOutput"', 'id="fwVaultList"',
-            'id="fwBase"', 'id="fwBuild"', 'id="fwImport"'))
+            'id="fwBase"', 'id="fwBuild"', 'id="fwImport"',
+            'id="fwAutoEnabled"', 'id="fwAutoStatus"', 'id="fwAutoScan"'))
     # Web Flasher page
     flasher_ok = FLASHER_PATH.exists()
     flasher_markers = False
@@ -2729,7 +3021,8 @@ def selftest() -> int:
     eng.shutdown()
     shutil.rmtree(tmp_root, ignore_errors=True)
     ok = (html_ok and html_markers and flasher_ok and flasher_markers
-          and patch_script and vault_module and vault_ok and firmware_build)
+          and patch_script and vault_module and vault_ok and firmware_build
+          and firmware_auto)
     print(json.dumps({
         "ok": ok,
         "rows": len(snap["raw"]["rx1"]["m"]),
@@ -2744,6 +3037,7 @@ def selftest() -> int:
         "vault_module": vault_module,
         "vault_ok": vault_ok,
         "firmware_build": firmware_build,
+        "firmware_auto": firmware_auto,
         "firmware_error": firmware_error,
         "version": snap["conn"]["version"],
     }, indent=2, ensure_ascii=False))
@@ -2775,6 +3069,11 @@ def main() -> int:
     ap.add_argument("--no-open", action="store_true", help="do not open the browser automatically")
     ap.add_argument("--no-auto-connect", action="store_true", help="do not connect automatically")
     ap.add_argument("--config", type=Path, default=CONFIG_PATH, help="configuration file")
+    ap.add_argument("--firmware-in", type=Path, default=FIRMWARE_IN_DIR,
+                    help="folder watched for full firmware images "
+                         "(default: ./firmware_in)")
+    ap.add_argument("--no-auto-safeguard", action="store_true",
+                    help="disable automatic firmware intake and version matching")
     ap.add_argument("--selftest", action="store_true", help="run the selftest and exit")
     args = ap.parse_args()
 
@@ -2788,16 +3087,21 @@ def main() -> int:
         cfg["conn_baud"] = args.baud
     if args.no_auto_connect:
         cfg["conn_auto_connect"] = False
+    if args.no_auto_safeguard:
+        cfg["fw_auto_safeguard"] = False
+    args.firmware_in = Path(args.firmware_in).resolve()
     source = "demo" if args.demo else ("replay" if args.replay else "serial")
     if source == "replay" and (args.replay is None or not args.replay.exists()):
         print(f"Replay file not found: {args.replay}", file=sys.stderr)
         return 2
 
-    for folder in (REC_DIR, SNAP_DIR, TUNING_DIR, VAULT_DIR, FIRMWARE_OUT_DIR):
+    for folder in (REC_DIR, SNAP_DIR, TUNING_DIR, VAULT_DIR, FIRMWARE_OUT_DIR,
+                   args.firmware_in):
         folder.mkdir(parents=True, exist_ok=True)
 
     engine = Engine(cfg, source=source, replay_path=args.replay,
-                    replay_speed=args.replay_speed, config_path=args.config)
+                    replay_speed=args.replay_speed, config_path=args.config,
+                    firmware_in_dir=args.firmware_in)
     try:
         server = Server((args.host, args.http), Handler, engine)
     except OSError as exc:

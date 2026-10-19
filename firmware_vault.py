@@ -13,6 +13,13 @@ What the vault accepts
 * **raw**   – any other dump (for example a raw SWD readout). Stored as a
   backup only; not flashable and not patchable.
 
+Automatic intake
+----------------
+`import_folder()` imports every full image found in a folder (the dashboard
+watches `firmware_in/`). `record_safeguard()` stores a small receipt that ties
+the connected radar's reported version to a verified original image. This is a
+version match, not a chip dump.
+
 The radar bootloader is write-only over UART. A true chip dump requires an
 external SWD programmer; this tool cannot read the radar through COM.
 
@@ -20,8 +27,10 @@ CLI:
   python -I firmware_vault.py inspect IMAGE
   python -I firmware_vault.py import IMAGE --source vendor-download
   python -I firmware_vault.py import DUMP.bin --source swd-dump --note "SWD readout"
+  python -I firmware_vault.py scan firmware_in
   python -I firmware_vault.py list
   python -I firmware_vault.py verify IMAGE_ID
+  python -I firmware_vault.py safeguard
 """
 
 from __future__ import annotations
@@ -47,11 +56,16 @@ SOURCES = ("vendor-download", "swd-dump", "other")
 KNOWN_BASES = {
     "official-1.6.12": {
         "label": "Seeed MR60BHA2 1.6.12 (official, 115200 baud)",
+        # Device 0xFFFF reply: family byte 0x04, then 1.6.12.
+        "version": (1, 6, 12),
+        "version_raw": "0401060C",
         "full_sha256": "10906046140495b54d854b3630a27503c1adb36c614febba8279c854d284ec3d",
         "app_sha256": "b8fef2d50086a745e9f13bb8db8106fff369501872d33b7e2d2152d13c569247",
     },
     "official-1.6.12-baud1382400": {
         "label": "MR60BHA2 1.6.12 with 1,388,889 baud patch",
+        "version": (1, 6, 12),
+        "version_raw": "0401060C",
         "full_sha256": "bab8e4a9c09582a08710b2e14ff3ac4f7cb4788885faa881ce6f2cd7cba39ddc",
         "app_sha256": "18b4a4401ee9d271230123655b163526aa24ec1ac7bc360c25b7f456c062f355",
     },
@@ -223,6 +237,63 @@ def inspect_image(data: bytes) -> dict:
     return info
 
 
+def device_version(raw: bytes | None) -> dict | None:
+    """Normalise the radar's 0xFFFF version reply.
+
+    The reply is four bytes: a family/product byte followed by major, minor and
+    patch. The family byte is not part of the version (04 01 06 0C -> 1.6.12).
+    Three-byte replies are accepted as major.minor.patch.
+    """
+    if not raw or len(raw) < 3:
+        return None
+    data = bytes(raw)
+    if len(data) >= 4:
+        family = data[0]
+        version = (data[1], data[2], data[3])
+        full = f"{data[0]}.{data[1]}.{data[2]}.{data[3]}"
+    else:
+        family = None
+        version = (data[0], data[1], data[2])
+        full = ".".join(str(b) for b in data)
+    return {
+        "raw": data.hex().upper(),
+        "family": family,
+        "version": ".".join(str(b) for b in version),
+        "tuple": list(version),
+        "full": full,
+    }
+
+
+def match_device_version(images: list[dict], raw: bytes | None) -> dict | None:
+    """Pick the best verified local image for the device version.
+
+    Only complete, present full images are considered. Preference order:
+    vendor-download source, unpatched official image, newest import. This is a
+    version match, not a proof that the image was read from the chip.
+    """
+    info = device_version(raw)
+    if info is None:
+        return None
+    target = tuple(info["tuple"])
+    candidates = []
+    for entry in images:
+        if not entry.get("exists", True) or not entry.get("buildable"):
+            continue
+        base = str(entry.get("known_base") or "")
+        meta = KNOWN_BASES.get(base)
+        if not meta or tuple(meta.get("version", ())) != target:
+            continue
+        source_rank = 0 if entry.get("source") == "vendor-download" else 1
+        variant_rank = 1 if "baud" in base else 0
+        candidates.append((source_rank, variant_rank, entry))
+    if not candidates:
+        return None
+    # Newest first, then a stable sort by preference so equal ranks keep it.
+    candidates.sort(key=lambda c: str(c[2].get("imported_at", "")), reverse=True)
+    candidates.sort(key=lambda c: (c[0], c[1]))
+    return dict(candidates[0][2])
+
+
 def _safe_stem(name: str) -> str:
     stem = Path(name or "firmware").stem
     stem = re.sub(r"[^A-Za-z0-9._@+-]+", "_", stem).strip("._")
@@ -335,6 +406,100 @@ class FirmwareVault:
             "size": path.stat().st_size,
         }
 
+    # -- automatic intake -------------------------------------------------
+    def import_folder(self, folder: Path, source: str | None = None,
+                      note: str = "automatic intake") -> list[dict]:
+        """Import every full image in *folder*. App/raw files are skipped.
+
+        Returns one result per file. Duplicates are reported, not stored again.
+        """
+        folder = Path(folder)
+        results: list[dict] = []
+        if not folder.is_dir():
+            return results
+        try:
+            files = sorted(
+                (p for p in folder.iterdir()
+                 if p.is_file() and p.suffix.lower() in (".bin", ".img")),
+                key=lambda p: p.name.lower())
+        except OSError as exc:
+            raise ValueError(f"Cannot read firmware inbox {folder}: {exc}") from exc
+        for path in files:
+            item: dict = {"file": path.name, "ok": False, "duplicate": False}
+            try:
+                if path.stat().st_size > MAX_IMAGE:
+                    item["error"] = f"larger than {MAX_IMAGE} bytes"
+                else:
+                    data = path.read_bytes()
+                    info = inspect_image(data)
+                    if info["kind"] != "full":
+                        item["error"] = (f"not a full image ({info['kind']}); "
+                                         "only complete OTA images are imported")
+                    else:
+                        chosen = source
+                        if chosen is None:
+                            base = str(info.get("known_base") or "")
+                            chosen = ("vendor-download"
+                                      if base.startswith("official-") else "other")
+                        entry = self.import_bytes(data, path.name,
+                                                  source=chosen, note=note)
+                        item.update({
+                            "ok": True,
+                            "id": entry["id"],
+                            "sha256": entry["sha256"],
+                            "known_base": entry.get("known_base"),
+                            "duplicate": bool(entry.get("duplicate")),
+                            "source": chosen,
+                        })
+            except Exception as exc:
+                item["error"] = str(exc)
+            results.append(item)
+        return results
+
+    # -- safeguard receipt ------------------------------------------------
+    @property
+    def safeguard_path(self) -> Path:
+        return self.root / "safeguard.json"
+
+    def record_safeguard(self, device: dict, matched: dict | None,
+                         basis: str, note: str = "") -> dict:
+        """Store a receipt linking the reported device version to a local image."""
+        image = None
+        if matched:
+            image = {
+                "id": matched.get("id"),
+                "file": matched.get("file"),
+                "original_name": matched.get("original_name"),
+                "sha256": matched.get("sha256"),
+                "size": matched.get("size"),
+                "known_base": matched.get("known_base"),
+                "source": matched.get("source"),
+                "imported_at": matched.get("imported_at"),
+            }
+        record = {
+            "version": 1,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "device": dict(device or {}),
+            "matched": image,
+            "basis": str(basis or "unknown"),
+            "note": str(note or ""),
+        }
+        with self.lock:
+            tmp = self.safeguard_path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n",
+                           encoding="utf-8")
+            os.replace(tmp, self.safeguard_path)
+        return record
+
+    def get_safeguard(self) -> dict | None:
+        if not self.safeguard_path.is_file():
+            return None
+        try:
+            data = json.loads(self.safeguard_path.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        return data if isinstance(data, dict) else None
+
 
 # ---------------------------------------------------------------------------
 # CLI
@@ -376,7 +541,13 @@ def main() -> int:
     p_import.add_argument("--source", choices=SOURCES, default="other")
     p_import.add_argument("--note", default="")
 
+    p_scan = sub.add_parser("scan", help="import every full image from a folder")
+    p_scan.add_argument("folder", type=Path)
+    p_scan.add_argument("--source", choices=SOURCES, default=None)
+    p_scan.add_argument("--note", default="automatic intake")
+
     sub.add_parser("list", help="list stored images")
+    sub.add_parser("safeguard", help="show the stored safeguard receipt")
 
     p_verify = sub.add_parser("verify", help="recompute the SHA-256 of a stored image")
     p_verify.add_argument("id")
@@ -406,6 +577,33 @@ def main() -> int:
         print(f"  Kind    : {entry['kind']} "
               f"({'flashable' if entry['buildable'] else 'backup only'})")
         print(f"  SHA-256 : {entry['sha256']}")
+        return 0
+
+    if args.cmd == "scan":
+        try:
+            results = vault.import_folder(args.folder, source=args.source,
+                                          note=args.note)
+        except Exception as exc:
+            print(f"Scan failed: {exc}", file=sys.stderr)
+            return 2
+        if not results:
+            print(f"No .bin/.img files in {args.folder}.")
+            return 0
+        for item in results:
+            if item["ok"]:
+                state = "already stored" if item["duplicate"] else "stored"
+                print(f"{state}: {item['file']} -> {item['id']} "
+                      f"({item.get('source')})")
+            else:
+                print(f"skipped: {item['file']}: {item.get('error')}")
+        return 0
+
+    if args.cmd == "safeguard":
+        record = vault.get_safeguard()
+        if not record:
+            print("No safeguard receipt yet.")
+            return 0
+        print(json.dumps(record, indent=2, ensure_ascii=False))
         return 0
 
     if args.cmd == "list":

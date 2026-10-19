@@ -344,6 +344,14 @@
   .vault-tag.warn { color: var(--warn); border-color: rgba(255,209,102,.35); }
   .vault-actions { display: flex; gap: 5px; justify-content: flex-end; }
   .vault-sha { color: var(--text-faint); font-size: 9.5px; }
+  .fw-auto { margin: 10px 0 4px; padding: 10px; border: 1px solid rgba(90,200,250,.28); background: rgba(90,200,250,.05); border-radius: 8px; }
+  .fw-auto-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .fw-auto-head .check { margin: 0; flex: 1 1 260px; }
+  .fw-auto-status { margin-top: 7px; font-size: 10.5px; line-height: 1.5; color: var(--text-dim); font-family: var(--mono); overflow-wrap: anywhere; }
+  .fw-auto-status.ok { color: var(--accent-2); }
+  .fw-auto-status.warn { color: var(--warn); }
+  .fw-auto-status.err { color: #ff7b72; }
+  .fw-auto-status code, .fw-auto code { color: var(--accent); font-family: var(--mono); }
   .okline { color: var(--accent-2); }
   .errline { color: var(--danger); }
 
@@ -675,7 +683,18 @@
                 <span class="badge" id="fwVaultInfo">vault not loaded</span>
               </div>
               <div class="notice">
-                The ADT6101P bootloader is <b>write-only over UART</b>: no command reads the flash back, and the vendor OTA tool has no dump function. A true chip backup therefore needs an external <b>SWD programmer</b> (read protection unknown). Otherwise keep the legally obtained vendor image as your base — that is the practical path for most users.
+                The ESP32 bridge only forwards UART, and the ADT6101P bootloader is <b>receive-only</b>: no command reads the flash back, and the vendor OTA tool has no dump function. A byte-for-byte chip dump still needs <b>SWD</b>. What runs automatically instead: the console identifies the connected radar's version, imports the legally obtained original image from <code>firmware_in/</code>, verifies its SHA-256 and stores a safeguard receipt. You can also import an image manually below.
+              </div>
+              <div class="fw-auto">
+                <div class="fw-auto-head">
+                  <label class="check">
+                    <input type="checkbox" id="fwAutoEnabled">
+                    <span>Automatic safeguard on connect</span>
+                  </label>
+                  <button class="btn small" id="fwAutoScan">Scan inbox now</button>
+                </div>
+                <div class="mini">Watches <code id="fwAutoInbox">firmware_in/</code> and imports every complete full image automatically. After the radar reports its version (<code>0xFFFF</code>), the console matches it to a verified local original and writes <code>firmware_vault/safeguard.json</code>. This confirms a <b>version match</b> — it does not read the chip.</div>
+                <div id="fwAutoStatus" class="fw-auto-status">Not scanned yet.</div>
               </div>
               <div class="fw-row">
                 <label class="fw-field">
@@ -1231,6 +1250,7 @@ async function refreshState() {
     renderFiles();
     renderPatch();
     renderFwTuning();
+    renderFwAuto(s.firmware);
   } catch (e) {
     // Server may still be starting; stay quiet.
   }
@@ -1280,6 +1300,7 @@ function onSnapshot(snap) {
     applyConfig(snap.config);
   }
   if (snap.logs) mergeLogs(snap.logs);
+  if (snap.firmware) renderFwAuto(snap.firmware);
   pushWaterfall(snap);
   pushRTI(snap);
   pushPhase(snap);
@@ -2715,6 +2736,94 @@ function updateFwUnknown() {
   if (cb && !unknown) cb.checked = false;
 }
 
+let lastFwScanSeq = null;
+
+function renderFwAuto(fw = null, autoLoad = true) {
+  const box = $("#fwAutoStatus");
+  if (!box) return;
+  const a = fw || (state.snap && state.snap.firmware) || {};
+  if (typeof a.scan_seq === "number") {
+    if (lastFwScanSeq === null) {
+      lastFwScanSeq = a.scan_seq;
+    } else if (a.scan_seq !== lastFwScanSeq) {
+      lastFwScanSeq = a.scan_seq;
+      const fresh = (a.imported || []).filter(i => !i.duplicate).length;
+      if (fresh && a.last_reason === "inbox-change") {
+        toast(`Safeguard: ${fresh} new firmware image(s) taken over automatically.`, "ok");
+      }
+      if (autoLoad && a.imported_count > 0) loadFirmwareVault();
+    }
+  }
+  const cb = $("#fwAutoEnabled");
+  if (cb) cb.checked = a.enabled !== false;
+  const inbox = $("#fwAutoInbox");
+  if (inbox && a.inbox) inbox.textContent = a.inbox;
+  const counts = a.last_scan
+    ? `${int(a.imported_count || 0)} imported · ${int(a.skipped_count || 0)} skipped`
+    : "not scanned yet";
+  const dv = a.device_version;
+  let text = "";
+  let cls = "";
+  if (a.error) {
+    text = `Safeguard error: ${a.error}`;
+    cls = "err";
+  } else if (a.scanning) {
+    text = `Scanning ${a.inbox || "firmware_in/"} …`;
+  } else if (dv && a.matched) {
+    const sha = (a.matched.sha256 || "").slice(0, 16);
+    text = `Device ${dv.version} (reply ${dv.raw}) · secured: ${a.matched.original_name || a.matched.id} · ${a.matched.known_base || "custom"} · SHA-256 ${sha}… — version match, not a chip dump.`;
+    cls = "ok";
+  } else if (dv && a.live_device === false) {
+    text = `${a.source || "Replay"} reports ${dv.version} — no safeguard receipt is written without a live serial device.`;
+    cls = "warn";
+  } else if (dv) {
+    text = `Device ${dv.version} (reply ${dv.raw}) · no matching full image in the vault. Put the legally obtained vendor image into ${a.inbox || "firmware_in/"}. Last scan: ${counts}.`;
+    cls = "warn";
+  } else {
+    text = `Last scan: ${counts}. ${a.inbox ? "Inbox: " + a.inbox + ". " : ""}Waiting for the radar version — connect the dashboard to the COM port.`;
+  }
+  if (a.skipped_count) {
+    const names = (a.skipped || []).slice(0, 3).map(s => s.file).join(", ");
+    if (names) text += ` Skipped: ${names}${a.skipped_count > 3 ? " …" : ""}.`;
+  }
+  if (a.receipt && a.receipt.updated_at) text += ` Receipt: ${a.receipt.updated_at}.`;
+  if (box.textContent !== text) box.textContent = text;
+  box.className = "fw-auto-status" + (cls ? " " + cls : "");
+}
+
+async function scanFirmwareInbox() {
+  const btn = $("#fwAutoScan");
+  const old = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Scanning …"; }
+  try {
+    const data = await api("/api/firmware/auto", { scan: true });
+    renderFwAuto(data.auto, false);
+    await loadFirmwareVault();
+    const a = data.auto || {};
+    if (a.error) toast("Safeguard: " + a.error, "err");
+    else if (a.matched) toast(`Safeguard: device ${a.device_version.version} matched ${a.matched.original_name || a.matched.id}`, "ok");
+    else if (a.device_version) toast(`Safeguard: device ${a.device_version.version}, no matching image yet`, "err");
+    else toast(`Safeguard: ${a.imported_count || 0} image(s) imported; device version not received yet`, "ok");
+  } catch (e) {
+    toast("Safeguard: " + e.message, "err");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = old; }
+  }
+}
+
+async function toggleFwAuto(ev) {
+  const enabled = !!ev.target.checked;
+  setConfig({ fw_auto_safeguard: enabled }, true);
+  try {
+    const data = await api("/api/firmware/auto", { enabled, scan: enabled });
+    renderFwAuto(data.auto, false);
+    if (enabled) await loadFirmwareVault();
+    toast(enabled ? "Automatic safeguard enabled." : "Automatic safeguard disabled.", "ok");
+  } catch (e) {
+    toast("Safeguard: " + e.message, "err");
+  }
+}
+
 function renderFwTuning() {
   const box = $("#fwTuning");
   if (!box) return;
@@ -2799,6 +2908,10 @@ function bindFirmwareEvents() {
   if (importBtn) importBtn.onclick = importFirmwareFile;
   const refreshBtn = $("#fwRefreshVault");
   if (refreshBtn) refreshBtn.onclick = () => loadFirmwareVault();
+  const autoScan = $("#fwAutoScan");
+  if (autoScan) autoScan.onclick = scanFirmwareInbox;
+  const autoCb = $("#fwAutoEnabled");
+  if (autoCb) autoCb.onchange = toggleFwAuto;
   const buildBtn = $("#fwBuild");
   if (buildBtn) buildBtn.onclick = buildFirmwareImage;
   const baseSel = $("#fwBase");
@@ -3041,7 +3154,7 @@ function switchView(view) {
   $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + view));
   setTimeout(() => { if (state.snap) renderCurrent(); }, 30);
   if (view === "record" || view === "firmware" || view === "log") refreshState();
-  if (view === "firmware") loadFirmwareVault();
+  if (view === "firmware") { loadFirmwareVault(); renderFwAuto(); }
 }
 
 function switchControl(panel) {

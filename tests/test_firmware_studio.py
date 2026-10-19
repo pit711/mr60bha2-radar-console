@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the firmware vault and the tuning-image build pipeline.
+"""Tests for the firmware vault, inbox watcher and tuning-image pipeline.
 
 All images are synthetic and generated inside the test. No vendor firmware,
 SDK code or flash backup is required or read.
@@ -10,29 +10,35 @@ Run from the project directory:
 
 from __future__ import annotations
 
+import copy
 import json
 import struct
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from advanced_dashboard import DEFAULT_CONFIG, Engine  # noqa: E402
 from firmware_vault import (  # noqa: E402
     APP_BASE,
     BAUD_OFF,
     FirmwareVault,
     HEADER_MAGIC,
     HPF_SITE,
+    KNOWN_BASES,
     PA_SITE,
     ROW_BYTES,
     ROW_SITES,
     TIA_SITES,
     VGA_SITES,
+    device_version,
     inspect_image,
+    match_device_version,
 )
 
 APP_SIZE = 42340
@@ -179,6 +185,169 @@ class VaultTests(unittest.TestCase):
             self.vault.get("../manifest.json")
 
 
+class VersionTests(unittest.TestCase):
+    def test_device_reply_is_normalised(self):
+        info = device_version(bytes([4, 1, 6, 12]))
+        self.assertEqual(info["version"], "1.6.12")
+        self.assertEqual(info["tuple"], [1, 6, 12])
+        self.assertEqual(info["family"], 4)
+        self.assertEqual(info["raw"], "0401060C")
+        self.assertEqual(info["full"], "4.1.6.12")
+
+    def test_three_byte_reply_is_accepted(self):
+        info = device_version(bytes([1, 6, 12]))
+        self.assertEqual(info["version"], "1.6.12")
+        self.assertIsNone(info["family"])
+
+    def test_short_or_empty_reply_is_rejected(self):
+        self.assertIsNone(device_version(b""))
+        self.assertIsNone(device_version(None))
+        self.assertIsNone(device_version(b"\x01\x06"))
+
+    def test_known_base_versions_match_their_replies(self):
+        for key, meta in KNOWN_BASES.items():
+            info = device_version(bytes.fromhex(meta["version_raw"]))
+            self.assertEqual(tuple(info["tuple"]), tuple(meta["version"]), key)
+
+    def _entry(self, **updates):
+        entry = {
+            "exists": True, "buildable": True, "known_base": "official-1.6.12",
+            "source": "other", "imported_at": "2026-01-01T00:00:00",
+            "id": "a", "sha256": "x",
+        }
+        entry.update(updates)
+        return entry
+
+    def test_match_prefers_vendor_source(self):
+        vendor = self._entry(id="vendor", source="vendor-download",
+                             imported_at="2026-01-01T00:00:00")
+        other = self._entry(id="other", source="other",
+                            imported_at="2026-02-01T00:00:00")
+        matched = match_device_version([other, vendor], bytes([4, 1, 6, 12]))
+        self.assertEqual(matched["id"], "vendor")
+
+    def test_match_prefers_unpatched_variant(self):
+        patched = self._entry(id="patched", source="vendor-download",
+                              known_base="official-1.6.12-baud1382400")
+        plain = self._entry(id="plain", source="vendor-download")
+        matched = match_device_version([patched, plain], bytes([4, 1, 6, 12]))
+        self.assertEqual(matched["id"], "plain")
+
+    def test_match_uses_newest_import_on_equal_rank(self):
+        old = self._entry(id="old", source="vendor-download",
+                          imported_at="2026-01-01T00:00:00")
+        new = self._entry(id="new", source="vendor-download",
+                          imported_at="2026-02-01T00:00:00")
+        matched = match_device_version([old, new], bytes([4, 1, 6, 12]))
+        self.assertEqual(matched["id"], "new")
+
+    def test_match_ignores_backups_missing_files_and_other_versions(self):
+        backup = self._entry(id="backup", buildable=False)
+        missing = self._entry(id="missing", exists=False)
+        unknown = self._entry(id="unknown", known_base=None)
+        self.assertIsNone(match_device_version(
+            [backup, missing, unknown], bytes([4, 1, 6, 12])))
+        self.assertIsNone(match_device_version(
+            [self._entry()], bytes([4, 1, 6, 13])))
+
+
+class AutoIntakeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.inbox = self.root / "inbox"
+        self.inbox.mkdir()
+        self.vault = FirmwareVault(self.root / "vault")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_import_folder_stores_full_images_only(self):
+        (self.inbox / "original.bin").write_bytes(make_full())
+        (self.inbox / "app-only.bin").write_bytes(make_app())
+        (self.inbox / "notes.txt").write_text("ignore me", encoding="utf-8")
+        results = self.vault.import_folder(self.inbox)
+        self.assertEqual(len(results), 2)  # .txt is ignored
+        by_name = {r["file"]: r for r in results}
+        self.assertTrue(by_name["original.bin"]["ok"])
+        self.assertFalse(by_name["app-only.bin"]["ok"])
+        self.assertIn("not a full image", by_name["app-only.bin"]["error"])
+        self.assertEqual(len(self.vault.list()), 1)
+
+    def test_second_scan_is_deduplicated(self):
+        (self.inbox / "original.bin").write_bytes(make_full())
+        first = self.vault.import_folder(self.inbox)
+        second = self.vault.import_folder(self.inbox)
+        self.assertTrue(first[0]["ok"])
+        self.assertTrue(second[0]["duplicate"])
+        self.assertEqual(len(self.vault.list()), 1)
+
+    def test_import_folder_source_override(self):
+        (self.inbox / "original.bin").write_bytes(make_full())
+        result = self.vault.import_folder(self.inbox,
+                                          source="vendor-download")[0]
+        self.assertEqual(result["source"], "vendor-download")
+        self.assertEqual(self.vault.list()[0]["source"], "vendor-download")
+
+    def test_missing_folder_is_empty(self):
+        self.assertEqual(self.vault.import_folder(self.root / "missing"), [])
+
+    def test_safeguard_receipt_round_trip(self):
+        entry = self.vault.import_bytes(make_full(), "original.bin",
+                                        source="vendor-download")
+        receipt = self.vault.record_safeguard(
+            {"port": "COM3", "connected": True, "version": "1.6.12",
+             "version_raw": "0401060C", "reply": "4.1.6.12"},
+            entry, "version-match", note="test")
+        self.assertTrue(self.vault.safeguard_path.is_file())
+        loaded = self.vault.get_safeguard()
+        self.assertEqual(loaded["device"]["version"], "1.6.12")
+        self.assertEqual(loaded["matched"]["sha256"], entry["sha256"])
+        self.assertEqual(loaded["basis"], "version-match")
+        self.assertEqual(receipt["matched"]["id"], entry["id"])
+
+    def test_safeguard_without_image(self):
+        receipt = self.vault.record_safeguard(
+            {"port": "COM3", "version": "1.6.12"}, None, "no-matching-image")
+        self.assertIsNone(receipt["matched"])
+        self.assertEqual(self.vault.get_safeguard()["basis"],
+                         "no-matching-image")
+
+    def test_no_receipt_returns_none(self):
+        self.assertIsNone(self.vault.get_safeguard())
+
+
+class InboxWatchTests(unittest.TestCase):
+    def test_image_dropped_after_startup_is_imported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            cfg = copy.deepcopy(DEFAULT_CONFIG)
+            cfg["conn_auto_connect"] = False
+            cfg["dsp_stream_hz"] = 2
+            engine = Engine(cfg, source="serial", start_threads=True,
+                            config_path=root / "config.json",
+                            vault_dir=root / "vault",
+                            firmware_in_dir=inbox)
+            try:
+                self.assertEqual(
+                    engine.firmware_auto_status()["imported_count"], 0)
+                (inbox / "late.bin").write_bytes(make_full())
+                deadline = time.time() + 12.0
+                status = {}
+                while time.time() < deadline:
+                    status = engine.firmware_auto_status()
+                    if status.get("last_reason") == "inbox-change":
+                        break
+                    time.sleep(0.2)
+                self.assertEqual(status.get("last_reason"), "inbox-change")
+                self.assertEqual(status.get("imported_count"), 1)
+                self.assertEqual(len(engine.vault.list()), 1)
+            finally:
+                engine.shutdown()
+
+
 class PatchPipelineTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -258,6 +427,26 @@ class CliTests(unittest.TestCase):
             self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
             self.assertIn("full (flashable)", res.stdout)
             self.assertIn("uart_baud=115200", res.stdout)
+
+    def test_scan_and_safeguard_cli(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            inbox = root / "inbox"
+            inbox.mkdir()
+            (inbox / "original.bin").write_bytes(make_full())
+            vault_dir = root / "vault"
+            base_cmd = [sys.executable, "-I", str(ROOT / "firmware_vault.py"),
+                        "--vault", str(vault_dir)]
+            res = subprocess.run(base_cmd + ["scan", str(inbox)],
+                                 cwd=str(ROOT), capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=60)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertIn("stored:", res.stdout)
+            res = subprocess.run(base_cmd + ["safeguard"],
+                                 cwd=str(ROOT), capture_output=True, text=True,
+                                 encoding="utf-8", errors="replace", timeout=60)
+            self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+            self.assertIn("No safeguard receipt yet", res.stdout)
 
 
 if __name__ == "__main__":

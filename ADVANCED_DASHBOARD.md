@@ -57,6 +57,8 @@ Default address: **http://127.0.0.1:8770** (binds only to `127.0.0.1`).
 | `--config FILE` | alternative configuration file |
 | `--no-open` | do not open the browser |
 | `--no-auto-connect` | do not connect automatically |
+| `--firmware-in DIR` | folder watched for full firmware images (default `./firmware_in`) |
+| `--no-auto-safeguard` | disable automatic intake and version matching |
 | `--selftest` | run the self-test and exit |
 
 ### Keyboard Shortcuts
@@ -350,6 +352,25 @@ python -I firmware_vault.py list
 python -I firmware_vault.py verify IMAGE_ID
 ```
 
+#### Automatic intake (`firmware_in/`)
+
+The dashboard polls `firmware_in/` once per second — no extra dependency, no
+restart, no button. A `.bin`/`.img` file that appears after startup (or is
+copied over while the dashboard runs) is taken over automatically as soon as
+its size and mtime have stayed unchanged for 1.5 s, so a copy that is still in
+progress is not read half-written.
+
+- The same intake runs at startup and on every folder change: full images are
+  stored in the vault and deduplicated by SHA-256; app-only and raw files are
+  reported as skipped.
+- Once the radar reports its version (`0xFFFF`), it is matched against the
+  verified images and `firmware_vault/safeguard.json` is written. This confirms
+  a **version match** — it does not read the chip.
+- The Firmware tab refreshes by itself: status line, vault list, and build base.
+- Disable it with **Automatic safeguard** in the tab or
+  `--no-auto-safeguard`; `--firmware-in DIR` points the watcher at another
+  folder.
+
 ### Step 2 — Build a tuned image
 
 In the tab, select a full vault image, set the tuning values in the sidebar
@@ -506,8 +527,9 @@ python -I -m unittest discover -s tests -v
 ## Files and Limits
 
 - All artifacts remain under the project directory.
-- `recordings/`, `snapshots/`, `tuning/dashboard/`, `firmware_vault/`, and
-  `firmware_out/` are working directories; all of them are gitignored.
+- `recordings/`, `snapshots/`, `tuning/dashboard/`, `firmware_in/`,
+  `firmware_vault/`, and `firmware_out/` are working directories; all of them
+  are gitignored.
 - The radar provides **no height information**; the “3D” view is
   range × Doppler × level.
 - The raw data is already range/Doppler-processed; a complete pre-FFT raw cube

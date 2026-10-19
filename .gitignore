@@ -20,6 +20,7 @@ flash_log.txt
 *.elf
 firmware_vault/
 firmware_out/
+firmware_in/
 
 # Editor / OS
 .vscode/
