@@ -39,8 +39,8 @@ and raw/track operation on its own.
   to `advanced_dashboard_config.json`; presets and automatic mode
 - **Recording and export** — NPZ sessions, snapshots, CSV export, replay at
   adjustable speed
-- **Firmware tuning image generator** — patches your own base image and verifies
-  hashes; never flashes
+- **Firmware vault and studio** — store your own original image, build a tuned
+  image from it in three steps, verify SHA-256; never flashes
 - **Web Flasher** — drives the bootloader from Chrome/Edge via Web Serial and
   XMODEM-CRC, with two-step confirmation and abort
 - **Works without hardware** — `--demo`, `--replay`, and `--selftest`
@@ -129,7 +129,7 @@ only and is not reachable from the network.
 | **Room Map** | x/y detections, target markers, trails, adjustable map size |
 | **Vitals** | respiration/heart rate, phase trace, spectra |
 | **Recordings** | start/stop, snapshot, CSV export, file list |
-| **Firmware** | tuning parameters, image generation, manifest and hashes |
+| **Firmware** | back up the original, build a tuned image, manifest and hashes, flash instructions |
 | **Log** | event log, parser statistics, frame types, radar debug text |
 
 The parameter drawer on the right covers **Connection**, **Radar Parameters**,
@@ -199,7 +199,48 @@ can make the device unusable until it is recovered with a wired programmer.
 
 ---
 
-## Firmware Tuning Images
+## Build Your Own Firmware
+
+The **Firmware** tab is a three-step studio: back up the original, build a tuned
+image, then flash it yourself. Every step is local; the dashboard never opens
+the bootloader and never flashes.
+
+### Step 1 — Secure the original firmware
+
+> **The ADT6101P bootloader is write-only over UART.** No command reads the
+> flash back, and the vendor OTA tool has no dump function. A true chip backup
+> therefore requires an **external SWD programmer** (read protection is unknown;
+> it may be locked). Otherwise, keep a legally obtained **vendor full image** as
+> your base — that is the practical path for most users.
+
+The **firmware vault** (`firmware_vault/`) stores immutable copies of images you
+import:
+
+| Kind | Recognised by | Flashable | Build base |
+|---|---|---|---|
+| **full** | OTA magic `64 A5 64 A5` + 16-byte header | yes | yes |
+| **app** | plausible vector table, no header | no | no |
+| **raw** | anything else (for example an SWD readout) | no | no |
+
+Import through the tab or the CLI. Each image is validated (stack pointer in
+SRAM, Thumb reset vector inside the image), stored under a timestamped ID, and
+deduplicated by SHA-256. Backups are kept even when they cannot be flashed.
+
+```bat
+python -I firmware_vault.py inspect IMAGE.bin
+python -I firmware_vault.py import IMAGE.bin --source vendor-download
+python -I firmware_vault.py import DUMP.bin --source swd-dump --note "SWD readout"
+python -I firmware_vault.py list
+python -I firmware_vault.py verify IMAGE_ID
+```
+
+### Step 2 — Build a tuned image
+
+Select a **full** vault image as the build base, set the patch parameters in the
+sidebar **Firmware** panel, and press **Build tuning image**. The result is
+written to `firmware_out/<timestamp>_<base>/` with a manifest of every offset,
+old and new byte, output SHA-256, and the expected UART load. Nothing is
+flashed.
 
 Some settings cannot be changed at runtime and require a patched image:
 
@@ -211,30 +252,47 @@ Some settings cannot be changed at runtime and require a patched image:
 | `fw_pa` | 10 / 12 / 15 | PA bias, RF-relevant |
 | `fw_hpf` | 150 / 400 kHz | high-pass filter, untested |
 
-`patch_raw_window.py` patches **only previously verified byte sites** in images
-you supply. It verifies the SHA-256 of the base images, refuses unknown images,
+The UART baud mode handles the difference between the stock image and this
+project:
+
+| Mode | Effect |
+|---|---|
+| `auto` (default) | patches the stock 115200 baud clock literal to 1,388,889; an already-patched base is left unchanged |
+| `keep` | leaves the stock baud rate untouched |
+| `1382400` | requires the fast literal and refuses an unknown state |
+
+`patch_raw_window.py` can also be used directly. It patches **only previously
+verified byte sites**, refuses unknown images unless you explicitly allow them,
 and contains no flash code:
 
 ```bat
-python -I patch_raw_window.py --rows 16
+python -I patch_raw_window.py --base-full YOUR_FULL_IMAGE.bin --rows 16
+python -I patch_raw_window.py --base-full custom.bin --allow-unknown-base --rows 16 --baud auto
 python -I patch_raw_window.py --rows 16 --tia 12 --allow-rf
 ```
 
-The script expects these files in the project directory (they are **not**
-included in this repository):
+The first two forms take any full image. The legacy form without `--base-full`
+expects these files in the project directory (they are **not** included in this
+repository):
 
 ```
 mr60bha2_v1.6.12_app@0x8000_baud1382400.bin
 MR60BHA2_eeprom_1.6.12_baud1382400.bin
 ```
 
-The **Firmware** tab exposes the same options and writes results to
-`tuning/dashboard/` together with a manifest of every patch, offset, hash, and
-the expected UART load. Flash the generated full image only through the Web
-Flasher, and only after your own review.
+A base that already contains tuning patches is rejected — use an unmodified
+original. Images with an unrecognised SHA-256 need the **Allow unknown base**
+checkbox; only enable it after verifying every patch offset yourself.
 
 **TIA and VGA must not be increased at the same time.** RF patches are untested;
 they can change reception, range, and regulatory compliance of the device.
+
+### Step 3 — Flash it yourself
+
+Download the generated **full** image from the manifest and open the
+**Web Flasher**. It validates the header and SHA-256 and sends the image only
+after two explicit confirmations. A failed update can leave the radar in the
+bootloader; keep the original image at hand.
 
 ### UART load
 
@@ -254,13 +312,14 @@ simultaneously.
 This is a **dashboard and tooling** project. It deliberately excludes:
 
 - radar firmware, the vendor SDK, decompiled code, and flash backups
+- vault copies (`firmware_vault/`) and generated images (`firmware_out/`)
 - recorded raw data (`*.npz`), snapshots, and tuning output
 - `advanced_dashboard_config.json` and any local configuration
 - logs, dumps, credentials, API keys, and Wi-Fi data
 
-`.gitignore` blocks `*.bin`, `*.npz`, the configuration file, and working
-directories. **Never commit a flash backup** — it can contain NVS data such as
-Wi-Fi credentials.
+`.gitignore` blocks `*.bin`, `*.npz`, `firmware_vault/`, `firmware_out/`, the
+configuration file, and working directories. **Never commit a flash backup** —
+it can contain NVS data such as Wi-Fi credentials.
 
 ---
 
@@ -268,17 +327,21 @@ Wi-Fi credentials.
 
 ```
 advanced_dashboard.py     Backend: serial reader, DSP, HTTP+SSE, recording, patch generator
-advanced_dashboard.html   Frontend: canvas renderer, UI, automation
+advanced_dashboard.html   Frontend: canvas renderer, firmware studio, UI, automation
 webflasher.html           Web Serial flasher (XMODEM-CRC, no firmware)
 radar_tf.py               TinyFrame protocol helper and CLI probe
+firmware_vault.py         Image validation, immutable vault, SHA-256 (never flashes)
 patch_raw_window.py       Tuning image generator (never flashes)
+tests/                    Unit tests for vault and patch pipeline (synthetic images)
 requirements.txt          Python dependencies
 docs/                     Screenshots for this README
 ```
 
-Working directories are created on demand: `recordings/`, `snapshots/`, and
-`tuning/`. The dashboard's HTTP endpoints are `/`, `/flasher`, `/api/state`,
-`/api/stream`, `/api/config`, `/api/action`, and `/api/download`.
+Working directories are created on demand: `recordings/`, `snapshots/`,
+`tuning/`, `firmware_vault/`, and `firmware_out/`. The dashboard's HTTP
+endpoints are `/`, `/flasher`, `/api/state`, `/api/stream`, `/api/config`,
+`/api/action`, `/api/download`, `/api/firmware/list`, `/api/firmware/image`,
+`/api/firmware/import`, and `/api/firmware/verify`.
 
 ---
 
@@ -295,7 +358,10 @@ Working directories are created on demand: `recordings/`, `snapshots/`, and
 | RTI stays empty | check `raw.ok` and `profiles.range_combined` |
 | Web Flasher: no serial support | use Chrome/Edge desktop and open the page via localhost |
 | Web Flasher: port busy | disconnect the dashboard first |
-| Firmware tab: base image missing | supply your own images; they are not bundled |
+| Firmware tab: no build base | import a **full** image into the vault; images are not bundled |
+| Firmware tab: "not a recognised official base" | verify every patch offset, then enable **Allow unknown base** |
+| Firmware tab: "already contains tuning patches" | use an unmodified original as the build base |
+| Need a true chip dump | the UART bootloader cannot read flash; use SWD or the vendor image |
 
 Run the self-test for a quick diagnosis:
 
@@ -306,7 +372,15 @@ python -I advanced_dashboard.py --selftest
 ```json
 {"ok": true, "rows": 8, "cols": 32, "detections": 12, "json_bytes": 24039,
  "html_exists": true, "html_markers": true, "flasher_exists": true,
- "flasher_markers": true, "patch_script": true, "version": "1.6.12.0"}
+ "flasher_markers": true, "patch_script": true, "vault_module": true,
+ "vault_ok": true, "firmware_build": true, "firmware_error": null,
+ "version": "1.6.12.0"}
+```
+
+Run the unit tests (synthetic images only, no vendor firmware required):
+
+```bat
+python -I -m unittest discover -s tests -v
 ```
 
 ---

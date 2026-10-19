@@ -319,6 +319,31 @@
   .manifest table.kv { font-size: 10px; }
   .flash-cmd { display: block; padding: 7px; background: rgba(255,93,115,.06); border: 1px solid rgba(255,93,115,.3); border-radius: 6px; color: var(--warn); font-family: var(--mono); font-size: 10px; word-break: break-all; margin-top: 6px; }
   .notice { border: 1px solid rgba(255,209,102,.3); background: rgba(255,209,102,.06); color: var(--warn); padding: 9px 10px; border-radius: 8px; font-size: 11px; line-height: 1.5; margin-bottom: 10px; }
+
+  /* Firmware studio */
+  .step-num {
+    flex: none; display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 1px solid rgba(76,201,240,.5); background: rgba(76,201,240,.12);
+    color: var(--accent); font-family: var(--mono); font-size: 10px; font-weight: 700;
+  }
+  .fw-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+  .fw-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .fw-field.grow { flex: 1 1 340px; }
+  .fw-field > span { color: var(--text-faint); font-size: 10px; font-family: var(--mono); }
+  .fw-field input[type=file] { color: var(--text-dim); font-family: var(--mono); font-size: 10px; max-width: 100%; }
+  .fw-field select {
+    width: 100%; padding: 5px 7px; border-radius: 6px; border: 1px solid var(--line-2);
+    background: var(--panel-2); color: var(--text); font-family: var(--mono); font-size: 11px;
+  }
+  .fw-field select:focus { border-color: var(--accent); outline: none; }
+  .fw-tuning { margin-top: 10px; }
+  .fw-tuning table.kv { font-size: 10px; }
+  .vault-tag { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 9px; border: 1px solid var(--line-2); color: var(--text-dim); }
+  .vault-tag.ok { color: var(--accent-2); border-color: rgba(122,229,130,.35); }
+  .vault-tag.warn { color: var(--warn); border-color: rgba(255,209,102,.35); }
+  .vault-actions { display: flex; gap: 5px; justify-content: flex-end; }
+  .vault-sha { color: var(--text-faint); font-size: 9.5px; }
   .okline { color: var(--accent-2); }
   .errline { color: var(--danger); }
 
@@ -644,15 +669,78 @@
         <section class="view" id="view-firmware">
           <div class="grid">
             <article class="card wide">
-              <div class="card-head"><h2>Firmware tuning</h2><span class="badge">Image generation only</span></div>
-              <div class="notice">TIA/VGA/PA/HPF, range window and UART baud rate are <b>firmware patches</b>. They are only generated as an image here. Flashing is done exclusively by the user through the <a href="/flasher" target="_blank" rel="noopener">Web Flasher</a> after explicit confirmation. The dashboard never flashes by itself.</div>
-              <div class="btn-row" style="margin-bottom:10px">
-                <button class="btn primary small" data-act="generate_patch">Create tuning image</button>
+              <div class="card-head">
+                <span class="step-num">1</span>
+                <h2>Secure the original firmware</h2>
+                <span class="badge" id="fwVaultInfo">vault not loaded</span>
+              </div>
+              <div class="notice">
+                The ADT6101P bootloader is <b>write-only over UART</b>: no command reads the flash back, and the vendor OTA tool has no dump function. A true chip backup therefore needs an external <b>SWD programmer</b> (read protection unknown). Otherwise keep the legally obtained vendor image as your base — that is the practical path for most users.
+              </div>
+              <div class="fw-row">
+                <label class="fw-field">
+                  <span>Image file</span>
+                  <input type="file" id="fwImport" accept=".bin,.img,.hex,application/octet-stream">
+                </label>
+                <label class="fw-field">
+                  <span>Source</span>
+                  <select id="fwSource">
+                    <option value="vendor-download">Vendor / official download (full image)</option>
+                    <option value="swd-dump">SWD dump (backup only)</option>
+                    <option value="other">Other / unknown</option>
+                  </select>
+                </label>
+                <button class="btn primary small" id="fwImportBtn">Store in vault</button>
+                <button class="btn small" id="fwRefreshVault">Refresh</button>
+              </div>
+              <div class="mini">Accepted: full OTA image (16-byte header + app, flashable and buildable), app-only image, or a raw SWD dump (backup only). Stored copies are immutable and SHA-256 is checked on import. Everything stays local; nothing is uploaded.</div>
+              <div id="fwVaultList" class="table-wrap" style="margin-top:10px"></div>
+            </article>
+
+            <article class="card wide">
+              <div class="card-head">
+                <span class="step-num">2</span>
+                <h2>Build your own image</h2>
+                <span class="badge">local generation · never flashes</span>
+              </div>
+              <div class="fw-row">
+                <label class="fw-field grow">
+                  <span>Build base (full image)</span>
+                  <select id="fwBase"><option value="">Loading …</option></select>
+                </label>
+                <label class="fw-field">
+                  <span>UART baud rate</span>
+                  <select id="fwBaud">
+                    <option value="auto">Auto: 1,388,889 (patch stock 115200)</option>
+                    <option value="keep">Keep stock baud rate</option>
+                  </select>
+                </label>
+                <button class="btn primary small" id="fwBuild">Build tuning image</button>
+              </div>
+              <label class="check" id="fwUnknownWrap" style="margin-top:8px;display:none">
+                <input type="checkbox" id="fwAllowUnknown">
+                <span>Allow unknown base — I verified every patch offset myself</span>
+              </label>
+              <div id="fwTuning" class="fw-tuning"></div>
+              <div class="mini">The tuning values come from the <b>Firmware</b> panel in the sidebar (range window, TIA, VGA, PA, HPF). Changed values apply to the next build. <a href="#" id="fwOpenParams" style="color:var(--accent)">Edit parameters</a></div>
+              <div id="fwViewInfo" class="mini">No image generated yet.</div>
+              <div id="fwViewManifest" class="manifest"></div>
+              <pre id="fwViewOutput" class="output" style="max-height:220px">–</pre>
+            </article>
+
+            <article class="card wide">
+              <div class="card-head">
+                <span class="step-num">3</span>
+                <h2>Upload / flash the image</h2>
+                <span class="badge">manual · two-step confirmation</span>
+              </div>
+              <div class="notice">
+                The dashboard never flashes. Download the generated <b>full</b> image, open the Web Flasher, connect the XIAO over USB and select the file. The flasher validates the header and SHA-256, shows the target and only sends data after an explicit confirmation.
+              </div>
+              <div class="btn-row">
                 <a class="btn small" href="/flasher" target="_blank" rel="noopener">Open Web Flasher</a>
               </div>
-              <div id="fwViewInfo" class="mini">No image generated yet.</div>
-              <pre id="fwViewOutput" class="output" style="max-height:320px">–</pre>
-              <div id="fwViewManifest"></div>
+              <div class="mini" style="margin-top:8px">Flashing uses TinyFrame 0x3000 → XMODEM-CRC 128-byte blocks → EOT. A failed update can leave the radar in the bootloader, so keep the original image at hand.</div>
             </article>
           </div>
         </section>
@@ -702,7 +790,7 @@ const state = {
   snap: null, wf: [], wfCols: 0, trail: [], phaseHist: [],
   lastVitalSeq: -1, lastSnapAt: 0, view: "live", control: "live",
   configLoaded: false, configQueue: {}, cfgTimer: null, pending: {},
-  lastPatch: null, logAutoScroll: true, es: null, connected: false,
+  lastPatch: null, fwImages: [], logAutoScroll: true, es: null, connected: false,
   persist: {}, rti: [], surf: { yaw: -0.52, pitch: 1.02, zoom: 1 },
 };
 
@@ -1142,6 +1230,7 @@ async function refreshState() {
     renderPresets();
     renderFiles();
     renderPatch();
+    renderFwTuning();
   } catch (e) {
     // Server may still be starting; stay quiet.
   }
@@ -2558,8 +2647,180 @@ function renderFiles() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Firmware                                                           */
+/* Firmware studio                                                    */
 /* ------------------------------------------------------------------ */
+async function loadFirmwareVault(preferredId = null) {
+  const box = $("#fwVaultList");
+  try {
+    const data = await api("/api/firmware/list");
+    state.fwImages = data.images || [];
+    renderFirmwareVault(preferredId);
+  } catch (e) {
+    if (box) box.innerHTML = `<div class="empty">Vault not readable: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderFirmwareVault(preferredId = null) {
+  const images = state.fwImages || [];
+  const info = $("#fwVaultInfo");
+  if (info) info.textContent = images.length ? `${images.length} image(s) · local vault` : "vault empty";
+  const list = $("#fwVaultList");
+  if (list) {
+    if (!images.length) {
+      list.innerHTML = `<div class="empty">Vault is empty. Import your original full image above.</div>`;
+    } else {
+      const rows = images.map(img => {
+        const tag = img.buildable
+          ? `<span class="vault-tag ok">full · buildable</span>`
+          : `<span class="vault-tag warn">${esc(img.kind)} · backup</span>`;
+        const missing = img.exists ? "" : ' <span class="vault-tag warn">file missing</span>';
+        const known = img.known_base ? esc(img.known_base) : "custom / unknown";
+        return `<tr>
+          <td>${esc(dateStr(img.imported_at))}</td>
+          <td>${esc(img.original_name || img.file || "")}${missing}<div class="vault-sha">${esc(img.id)} · ${known}</div></td>
+          <td>${tag}</td>
+          <td class="num">${fmtBytes(img.size)}</td>
+          <td>${esc(img.source || "other")}</td>
+          <td><span class="vault-sha" title="${esc(img.sha256 || "")}">${esc((img.sha256 || "").slice(0, 12))}…</span></td>
+          <td><div class="vault-actions">
+            ${img.exists ? `<a class="btn tiny" href="/api/firmware/image?id=${encodeURIComponent(img.id)}" download>Download</a>` : ""}
+            <button class="btn tiny" data-vault-verify="${esc(img.id)}">Verify</button>
+          </div></td>
+        </tr>`;
+      }).join("");
+      list.innerHTML = `<table class="table"><thead><tr><th>Imported</th><th>Image</th><th>Type</th><th>Size</th><th>Source</th><th>SHA-256</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+  }
+  const sel = $("#fwBase");
+  if (sel) {
+    const prev = preferredId || sel.value;
+    const buildable = images.filter(i => i.buildable && i.exists);
+    sel.innerHTML = buildable.length
+      ? buildable.map(img => `<option value="${esc(img.id)}">${esc(img.original_name || img.id)} · ${esc(img.known_base || "custom")} · ${esc(dateStr(img.imported_at))}</option>`).join("")
+      : `<option value="">No full image in the vault</option>`;
+    if (prev && buildable.some(i => i.id === prev)) sel.value = prev;
+    else if (buildable.length) sel.value = buildable[0].id;
+  }
+  updateFwUnknown();
+}
+
+function updateFwUnknown() {
+  const sel = $("#fwBase");
+  const id = sel ? sel.value : "";
+  const entry = (state.fwImages || []).find(i => i.id === id);
+  const wrap = $("#fwUnknownWrap");
+  const cb = $("#fwAllowUnknown");
+  const unknown = !!(entry && !entry.known_base);
+  if (wrap) wrap.style.display = unknown ? "" : "none";
+  if (cb && !unknown) cb.checked = false;
+}
+
+function renderFwTuning() {
+  const box = $("#fwTuning");
+  if (!box) return;
+  const c = state.config || {};
+  const rows = Number(c.fw_rows) || 8;
+  const tia = Number(c.fw_tia) || 6;
+  const vga = Number(c.fw_vga) || 15;
+  const pa = Number(c.fw_pa) || 10;
+  const hpf = Number(c.fw_hpf) || 150;
+  const span = (rows * 0.125).toFixed(2);
+  const load = rows === 32 ? "160.7" : rows === 16 ? "80.6" : "40.5";
+  const rfChanged = tia !== 6 || vga !== 15 || pa !== 10 || hpf !== 150;
+  const rfAllowed = !!c.fw_allow_rf;
+  const kv = [
+    ["Range window", `${rows} rows · ${span} m · approx. ${load} kB/s`],
+    ["TIA gain", `${tia} dB${tia === 6 ? " (default)" : ""}`],
+    ["VGA gain", `${vga} dB${vga === 15 ? " (default)" : ""}`],
+    ["PA bias", `${pa}${pa === 10 ? " (default)" : ""}`],
+    ["High-pass", `${hpf} kHz${hpf === 150 ? " (default)" : ""}`],
+    ["RF patches", rfChanged ? (rfAllowed ? "changed · allowed" : "changed · NOT allowed") : "default values"],
+  ];
+  if (rows === 32) kv.push(["32-row rate", c.fw_allow_unsafe ? "allowed (UART overload)" : "blocked"]);
+  box.innerHTML = kvTable(kv);
+}
+
+async function importFirmwareFile() {
+  const input = $("#fwImport");
+  const file = input && input.files && input.files[0];
+  if (!file) { toast("Choose a firmware image first.", "err"); return; }
+  const limit = 8 * 1024 * 1024 + 64 * 1024;
+  if (file.size > limit) { toast("Image too large (max 8 MB).", "err"); return; }
+  const source = $("#fwSource") ? $("#fwSource").value : "other";
+  const btn = $("#fwImportBtn");
+  const old = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Storing …"; }
+  try {
+    const res = await fetch("/api/firmware/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Filename": encodeURIComponent(file.name),
+        "X-Firmware-Source": source,
+      },
+      body: file,
+    });
+    let data = null;
+    try { data = await res.json(); } catch (_) { data = { ok: false, error: "HTTP " + res.status }; }
+    if (!res.ok || !data.ok) throw new Error(data.error || ("HTTP " + res.status));
+    const img = data.image || {};
+    toast(data.duplicate ? `Already in vault: ${img.id}` : `Stored in vault: ${img.id}`, "ok");
+    if (input) input.value = "";
+    await loadFirmwareVault(img.buildable ? img.id : null);
+    refreshState();
+  } catch (e) {
+    toast("Import: " + e.message, "err");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = old; }
+  }
+}
+
+async function buildFirmwareImage() {
+  const sel = $("#fwBase");
+  const baseId = sel ? sel.value : "";
+  if (!baseId) { toast("Import a full image and select it as base first.", "err"); return; }
+  const btn = $("#fwBuild");
+  const old = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Building …"; }
+  try {
+    const data = await act("generate_patch", {
+      base_id: baseId,
+      allow_unknown_base: !!($("#fwAllowUnknown") && $("#fwAllowUnknown").checked),
+      baud: $("#fwBaud") ? $("#fwBaud").value : "auto",
+    });
+    if (data && data.patch && data.patch.ok) toast("Image built. Download it below and flash it manually.", "ok");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = old; }
+  }
+}
+
+function bindFirmwareEvents() {
+  const importBtn = $("#fwImportBtn");
+  if (importBtn) importBtn.onclick = importFirmwareFile;
+  const refreshBtn = $("#fwRefreshVault");
+  if (refreshBtn) refreshBtn.onclick = () => loadFirmwareVault();
+  const buildBtn = $("#fwBuild");
+  if (buildBtn) buildBtn.onclick = buildFirmwareImage;
+  const baseSel = $("#fwBase");
+  if (baseSel) baseSel.onchange = updateFwUnknown;
+  const openParams = $("#fwOpenParams");
+  if (openParams) openParams.onclick = (e) => { e.preventDefault(); switchControl("fw"); };
+  const list = $("#fwVaultList");
+  if (list) list.addEventListener("click", async (e) => {
+    const vbtn = e.target.closest("[data-vault-verify]");
+    if (!vbtn) return;
+    const id = vbtn.dataset.vaultVerify;
+    vbtn.disabled = true;
+    try {
+      const r = await api("/api/firmware/verify", { id });
+      toast(r.ok ? `SHA-256 verified: ${id}` : `SHA-256 MISMATCH: ${id}`, r.ok ? "ok" : "err");
+    } catch (err) {
+      toast("Verify: " + err.message, "err");
+    }
+    vbtn.disabled = false;
+  });
+}
+
 function renderPatch(patch = state.lastPatch) {
   if (!patch) {
     const fo = $("#fwOutput"); if (fo) fo.textContent = "–";
@@ -2569,10 +2830,19 @@ function renderPatch(patch = state.lastPatch) {
   const text = patch.stdout || patch.stderr || "–";
   const set = (id) => { const el = $(id); if (el) el.textContent = text; };
   set("#fwOutput"); set("#fwViewOutput");
-  const info = patch.ok ? "Image generated – NOT flashed." : "Image generation failed.";
+  const base = patch.base
+    ? `Base: ${patch.base.name || patch.base.id} (${patch.base.known_base || "custom"}) · UART: ${patch.baud === "keep" ? "stock" : "1,388,889 baud"} · `
+    : "";
+  const info = base + (patch.ok ? "Image generated – NOT flashed." : "Image generation failed.");
   const fi = $("#fwInfo"); if (fi) fi.textContent = info;
   const fvi = $("#fwViewInfo"); if (fvi) fvi.textContent = info;
   let html = "";
+  if (patch.ok && patch.download_file) {
+    html += `<div class="btn-row" style="margin:8px 0">`;
+    html += `<a class="btn primary small" href="/api/download?file=${encodeURIComponent(patch.download_file)}" download>Download full image</a>`;
+    html += `<a class="btn small" href="/flasher" target="_blank" rel="noopener">Open Web Flasher</a>`;
+    html += `</div>`;
+  }
   if (patch.manifest) {
     const m = patch.manifest;
     const outputs = m.outputs || {};
@@ -2771,6 +3041,7 @@ function switchView(view) {
   $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + view));
   setTimeout(() => { if (state.snap) renderCurrent(); }, 30);
   if (view === "record" || view === "firmware" || view === "log") refreshState();
+  if (view === "firmware") loadFirmwareVault();
 }
 
 function switchControl(panel) {
@@ -2843,6 +3114,7 @@ function bindEvents() {
     bindHeatHover($("#" + id));
   }
   bindSurfaceInteractions($("#surface3d"));
+  bindFirmwareEvents();
   // Keyboard shortcuts
   document.addEventListener("keydown", (e) => {
     if (e.target.matches("input, select, textarea")) return;

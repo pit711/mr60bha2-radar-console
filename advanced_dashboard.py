@@ -41,16 +41,18 @@ import os
 import queue
 import re
 import shlex
+import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import numpy as np
 
@@ -64,6 +66,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 import radar_tf as d  # noqa: E402  (TFParser, build_frame, decode, COMMANDS)
+from firmware_vault import FirmwareVault, inspect_image  # noqa: E402
 
 HTML_PATH = HERE / "advanced_dashboard.html"
 FLASHER_PATH = HERE / "webflasher.html"
@@ -71,6 +74,9 @@ CONFIG_PATH = HERE / "advanced_dashboard_config.json"
 REC_DIR = HERE / "recordings"
 SNAP_DIR = HERE / "snapshots"
 TUNING_DIR = HERE / "tuning" / "dashboard"
+VAULT_DIR = HERE / "firmware_vault"
+FIRMWARE_OUT_DIR = HERE / "firmware_out"
+MAX_FIRMWARE_UPLOAD = 8 * 1024 * 1024 + 64 * 1024
 RAW_TYPES = (0x0A32, 0x0A34)
 BLOCKED_TYPES = {0x3000, 0x4000}
 APP_VERSION = "1.0.0"
@@ -582,13 +588,14 @@ def make_point_frame(points: list[dict]) -> bytes:
 class Engine:
     def __init__(self, cfg: dict, source: str = "serial", replay_path: Path | None = None,
                  replay_speed: float = 1.0, config_path: Path = CONFIG_PATH,
-                 start_threads: bool = True) -> None:
+                 start_threads: bool = True, vault_dir: Path | None = None) -> None:
         self.cfg = copy.deepcopy(cfg)
         self.defaults = copy.deepcopy(DEFAULT_CONFIG)
         self.config_path = config_path
         self.source = source
         self.replay_path = Path(replay_path) if replay_path else None
         self.replay_speed = max(0.05, float(replay_speed))
+        self.vault = FirmwareVault(Path(vault_dir) if vault_dir else VAULT_DIR)
 
         self.lock = threading.RLock()
         self.dsp_lock = threading.Lock()
@@ -2061,14 +2068,17 @@ class Engine:
     # ------------------------------------------------------------------
     # Firmware patch (generate an image only, never flash)
     # ------------------------------------------------------------------
-    def generate_patch(self) -> tuple[bool, str, dict]:
+    def generate_patch(self, base_id: str | None = None,
+                       allow_unknown_base: bool = False,
+                       baud: str = "auto",
+                       out_root: Path | None = None) -> tuple[bool, str, dict]:
         with self.lock:
             cfg = copy.deepcopy(self.cfg)
         rows = int(cfg["fw_rows"]); tia = int(cfg["fw_tia"]); vga = int(cfg["fw_vga"])
         pa = int(cfg["fw_pa"]); hpf = int(cfg["fw_hpf"])
         rf = (tia != 6 or vga != 15 or pa != 10 or hpf != 150)
         if tia != 6 and vga != 15:
-            msg = ("TIA and VGA must not be increased at the same time – both "
+            msg = ("TIA and VGA must not be increased at the same time - both "
                    "gain stages add up. Test one stage first.")
             self.log("warn", msg)
             return False, msg, {"ok": False, "error": msg}
@@ -2082,16 +2092,93 @@ class Engine:
                    "They are untested and can change reception and range.")
             self.log("warn", msg)
             return False, msg, {"ok": False, "error": msg}
-        try:
-            out_dir = resolve_under_here(str(cfg["fw_out_dir"]), base=HERE)
-        except Exception as exc:
-            return False, str(exc), {"ok": False, "error": str(exc)}
+        if baud not in ("auto", "keep", "1382400"):
+            baud = "auto"
+
+        legacy_available = (
+            (HERE / "MR60BHA2_eeprom_1.6.12_baud1382400.bin").is_file()
+            and (HERE / "mr60bha2_v1.6.12_app@0x8000_baud1382400.bin").is_file())
+        base_entry: dict | None = None
+        base_path: Path | None = None
+        if base_id:
+            try:
+                base_entry, base_path = self.vault.get(str(base_id))
+            except Exception as exc:
+                msg = f"Firmware base not available: {exc}"
+                self.log("warn", msg)
+                return False, msg, {"ok": False, "error": msg}
+        elif not legacy_available:
+            # The sidebar button has no base selector. If no legacy files are
+            # present, use the newest flashable image from the vault.
+            try:
+                images = [e for e in self.vault.list()
+                          if e.get("buildable") and e.get("exists")]
+            except Exception as exc:
+                msg = f"Firmware vault not readable: {exc}"
+                self.log("error", msg)
+                return False, msg, {"ok": False, "error": msg}
+            if not images:
+                msg = ("No build base available. Import your original full image "
+                       "(16-byte header + app) in the Firmware tab first.")
+                self.log("warn", msg)
+                return False, msg, {"ok": False, "error": msg}
+            base_entry = images[0]
+            base_id = str(base_entry.get("id"))
+            try:
+                _, base_path = self.vault.get(base_id)
+            except Exception as exc:
+                msg = f"Firmware base not available: {exc}"
+                self.log("warn", msg)
+                return False, msg, {"ok": False, "error": msg}
+
+        if base_entry is not None:
+            if not base_entry.get("buildable"):
+                msg = (f"{base_entry.get('original_name', base_id)} is stored as a "
+                       f"{base_entry.get('kind', 'backup')} backup. Only a full image "
+                       "(16-byte OTA header + app) can be used as a build base.")
+                self.log("warn", msg)
+                return False, msg, {"ok": False, "error": msg}
+            if not base_entry.get("known_base") and not allow_unknown_base:
+                msg = ("This image is not a recognised official base. Verify every "
+                       "patch offset yourself, then enable 'allow unknown base'.")
+                self.log("warn", msg)
+                return False, msg, {"ok": False, "error": msg}
+            already = base_entry.get("inspection", {}).get("patches") or {}
+            defaults = {"rows": 8, "tia_db": 6, "vga": 15, "pa": 10, "hpf_khz": 150}
+            changed = [k for k, v in defaults.items()
+                       if already.get(k) is not None and already.get(k) != v]
+            if changed:
+                msg = ("This image already contains tuning patches "
+                       f"({', '.join(changed)}). Use an unmodified original image "
+                       "as the build base.")
+                self.log("warn", msg)
+                return False, msg, {"ok": False, "error": msg}
+
+        if base_entry is not None:
+            safe_id = re.sub(r"[^A-Za-z0-9._-]+", "_", str(base_id))[:80] or "base"
+            root = Path(out_root) if out_root else FIRMWARE_OUT_DIR
+            out_dir = root / f"{time.strftime('%Y%m%d-%H%M%S')}_{safe_id}"
+            counter = 2
+            while out_dir.exists():
+                out_dir = root / f"{time.strftime('%Y%m%d-%H%M%S')}_{safe_id}_{counter}"
+                counter += 1
+        else:
+            try:
+                out_dir = resolve_under_here(str(cfg["fw_out_dir"]), base=HERE)
+            except Exception as exc:
+                return False, str(exc), {"ok": False, "error": str(exc)}
         out_dir.mkdir(parents=True, exist_ok=True)
+
         cmd = [
             sys.executable, "-I", str(HERE / "patch_raw_window.py"),
             "--rows", str(rows), "--tia", str(tia), "--vga", str(vga),
             "--pa", str(pa), "--hpf", str(hpf), "--out-dir", str(out_dir),
+            "--baud", baud,
         ]
+        if base_path is not None:
+            cmd.extend(["--base-full", str(base_path)])
+            if base_entry is not None and not base_entry.get("known_base"):
+                cmd.append("--allow-unknown-base")
         if rf:
             cmd.append("--allow-rf")
         if rows == 32:
@@ -2115,14 +2202,22 @@ class Engine:
                 manifest["_path"] = str(manifests[0])
             except Exception as exc:
                 self.log("warn", f"Manifest not readable: {exc}")
+        download_file = None
         flash_cmd = None
         if manifest:
-            full = manifest.get("outputs", {}).get("full", {}).get("path")
-            if full:
+            for item in manifest.get("outputs", {}).values():
+                try:
+                    rel = Path(item["path"]).resolve().relative_to(HERE.resolve())
+                    item["download_file"] = str(rel).replace("\\", "/")
+                except Exception:
+                    item["download_file"] = None
+            full = manifest.get("outputs", {}).get("full", {})
+            download_file = full.get("download_file")
+            if download_file:
                 # The dashboard never flashes. Point the user to the browser-based
                 # Web Flasher, which sends the image only after explicit confirmation.
                 flash_cmd = (f"Open /flasher in this dashboard and select "
-                             f"{Path(full).name} – nothing is flashed automatically.")
+                             f"{Path(full['path']).name} - nothing is flashed automatically.")
         result = {
             "ok": res.returncode == 0,
             "returncode": res.returncode,
@@ -2131,15 +2226,28 @@ class Engine:
             "stderr": (res.stderr or "")[-10000:],
             "manifest": manifest,
             "manifest_path": str(manifests[0]) if manifests else None,
+            "download_file": download_file,
             "flash_command": flash_cmd,
+            "base": None if base_entry is None else {
+                "id": base_entry.get("id"),
+                "name": base_entry.get("original_name"),
+                "kind": base_entry.get("kind"),
+                "known_base": base_entry.get("known_base"),
+                "sha256": base_entry.get("sha256"),
+            },
+            "baud": baud,
             "warning": "NOT FLASHED. Flash manually only after explicit confirmation.",
         }
         self.last_patch = result
         if res.returncode == 0:
-            self.log("info", f"Tuning image generated: {manifest.get('outputs', {}).get('full', {}).get('path', out_dir)}")
+            full_path = (manifest.get("outputs", {}).get("full", {}).get("path")
+                         if manifest else None)
+            self.log("info", f"Tuning image generated: {full_path or out_dir}")
         else:
             self.log("error", f"Patch script error (rc={res.returncode}): {output[-500:]}")
-        return res.returncode == 0, "Patch image generated." if res.returncode == 0 else "Patch image failed.", result
+        return (res.returncode == 0,
+                "Patch image generated." if res.returncode == 0 else "Patch image failed.",
+                result)
 
     # ------------------------------------------------------------------
     # Shutdown
@@ -2258,10 +2366,35 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/download":
             self._download(parsed)
             return
+        if path == "/api/firmware/list":
+            eng = self.server.engine
+            try:
+                images = eng.vault.list()
+                self._send_json(200, {"ok": True, "images": images,
+                                      "vault_dir": str(eng.vault.root)})
+            except Exception as exc:
+                self._send_json(200, {"ok": False, "images": [],
+                                      "error": str(exc),
+                                      "vault_dir": str(eng.vault.root)})
+            return
+        if path == "/api/firmware/image":
+            qs = parse_qs(parsed.query)
+            image_id = (qs.get("id") or [""])[0]
+            try:
+                entry, image_path = self.server.engine.vault.get(image_id)
+                self._send_bytes(200, image_path.read_bytes(),
+                                 "application/octet-stream",
+                                 filename=image_path.name)
+            except Exception as exc:
+                self._send_json(404, {"ok": False, "error": str(exc)})
+            return
         self._send_json(404, {"ok": False, "error": "not found"})
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/firmware/import":
+            self._firmware_import(parsed)
+            return
         try:
             req = self._read_json()
         except Exception as exc:
@@ -2276,10 +2409,49 @@ class Handler(BaseHTTPRequestHandler):
                 "config": eng.config_snapshot(),
             })
             return
+        if parsed.path == "/api/firmware/verify":
+            image_id = str(req.get("id", "")).strip()
+            try:
+                self._send_json(200, eng.vault.verify(image_id))
+            except Exception as exc:
+                self._send_json(404, {"ok": False, "error": str(exc)})
+            return
         if parsed.path == "/api/action":
             self._action(req)
             return
         self._send_json(404, {"ok": False, "error": "not found"})
+
+    def _firmware_import(self, parsed) -> None:
+        eng = self.server.engine
+        try:
+            length = int(self.headers.get("Content-Length", "0") or "0")
+        except ValueError:
+            length = 0
+        if length <= 0:
+            self._send_json(400, {"ok": False, "error": "empty upload"})
+            return
+        if length > MAX_FIRMWARE_UPLOAD:
+            self._send_json(413, {"ok": False, "error":
+                                  f"image too large (max {MAX_FIRMWARE_UPLOAD} bytes)"})
+            return
+        data = self.rfile.read(length)
+        if len(data) != length:
+            self._send_json(400, {"ok": False, "error": "incomplete upload"})
+            return
+        qs = parse_qs(parsed.query)
+        source = (qs.get("source") or [self.headers.get("X-Firmware-Source", "other")])[0]
+        name = (qs.get("name") or [self.headers.get("X-Filename", "firmware.bin")])[0]
+        note = (qs.get("note") or [""])[0]
+        try:
+            entry = eng.vault.import_bytes(data, unquote(name), source=source, note=note)
+        except Exception as exc:
+            eng.log("warn", f"Firmware import rejected: {exc}")
+            self._send_json(400, {"ok": False, "error": str(exc)})
+            return
+        eng.log("info", f"Firmware image stored in vault: {entry['id']} "
+                        f"({entry['kind']}, {entry['size']} B)")
+        self._send_json(200, {"ok": True, "image": entry,
+                              "duplicate": bool(entry.get("duplicate"))})
 
     def _action(self, req: dict) -> None:
         eng = self.server.engine
@@ -2358,8 +2530,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._send_json(200, {"ok": True, "message": "Auto mode off.",
                                       "config": eng.config_snapshot()})
             elif action == "generate_patch":
-                ok, msg, result = eng.generate_patch()
-                self._send_json(200, {"ok": ok, "message": msg, "patch": result,
+                ok, msg, result = eng.generate_patch(
+                    base_id=str(req.get("base_id") or "") or None,
+                    allow_unknown_base=bool(req.get("allow_unknown_base")),
+                    baud=str(req.get("baud") or "auto"),
+                )
+                self._send_json(200, {"ok": ok, "message": msg,
+                                      "error": None if ok else msg,
+                                      "patch": result,
                                       "config": eng.config_snapshot()})
             elif action == "clear_log":
                 ok, msg = eng.clear_log()
@@ -2428,13 +2606,41 @@ class Handler(BaseHTTPRequestHandler):
 # Selftest
 # ---------------------------------------------------------------------------
 
+def make_synthetic_full_image(rows: int = 8) -> bytes:
+    """Synthetic, hardware-free full image with valid vectors and patch sites.
+
+    Used only by the selftest and the test suite. It contains no vendor code.
+    """
+    app = bytearray(42340)
+    struct.pack_into("<I", app, 0, 0x20007218)   # initial stack pointer
+    struct.pack_into("<I", app, 4, 0x80D1)       # reset vector (Thumb)
+    struct.pack_into("<I", app, 0x998C, 0x05F5E100)  # stock UART clock literal
+    row_bytes = {8: b"\x4f\xf4\x80\x62",
+                 16: b"\x4f\xf4\x00\x62",
+                 32: b"\x4f\xf4\x80\x52"}[rows]
+    app[0x8470:0x8474] = row_bytes
+    app[0x8492:0x8496] = row_bytes
+    app[0x3024:0x3026] = b"\x23\x69"   # TIA 6 dB
+    app[0x3028:0x302A] = b"\xa1\x68"
+    app[0x302A:0x302C] = b"\x08\x46"
+    app[0x33AE:0x33B0] = b"\x0f\x20"   # VGA 15
+    app[0x33B6:0x33B8] = b"\x0f\x20"
+    app[0x339E:0x33A0] = b"\x0a\x20"   # PA 10
+    app[0x33BE:0x33C0] = b"\x96\x20"   # HPF 150
+    header = bytes.fromhex("64a564a5 5a100000 02000000 00000000")
+    return header + bytes(app)
+
+
 def selftest() -> int:
     print("Selftest - Advanced Radar Console")
+    tmp_root = Path(tempfile.mkdtemp(prefix="radar_selftest_"))
     cfg = copy.deepcopy(DEFAULT_CONFIG)
     cfg["auto_enabled"] = True
     cfg["auto_contrast"] = True
     cfg["det_enabled"] = True
-    eng = Engine(cfg, source="selftest", start_threads=False)
+    eng = Engine(cfg, source="selftest", start_threads=False,
+                 config_path=tmp_root / "config.json",
+                 vault_dir=tmp_root / "vault")
     rng = np.random.default_rng(42)
     t = 1.0
     p1 = synthetic_raw_payload(rng, t, 8, 32, 1)
@@ -2460,14 +2666,55 @@ def selftest() -> int:
     # JSON round trip
     payload = json.dumps(snap, allow_nan=False)
     assert len(payload) > 1000
+
+    # Firmware vault and build pipeline (synthetic image, no vendor code)
+    vault_ok = False
+    firmware_build = False
+    firmware_error = None
+    try:
+        sample = make_synthetic_full_image(8)
+        entry = eng.vault.import_bytes(sample, "synthetic-full.bin", source="other")
+        assert entry["buildable"] and entry["kind"] == "full", entry
+        duplicate = eng.vault.import_bytes(sample, "again.bin", source="other")
+        assert duplicate["duplicate"] and duplicate["id"] == entry["id"], duplicate
+        assert eng.vault.verify(entry["id"])["ok"]
+        raw = bytes(range(256)) * 16
+        raw_entry = eng.vault.import_bytes(raw, "swd-dump.bin", source="swd-dump")
+        assert raw_entry["kind"] == "raw" and not raw_entry["buildable"], raw_entry
+        try:
+            eng.vault.import_bytes(raw, "not-vendor.bin", source="vendor-download")
+            raise AssertionError("raw image accepted as a vendor image")
+        except ValueError:
+            pass
+        vault_ok = True
+
+        eng.update_config({"fw_rows": 16})
+        ok_build, build_msg, build_result = eng.generate_patch(
+            base_id=entry["id"], allow_unknown_base=True, baud="auto",
+            out_root=tmp_root / "out")
+        assert ok_build, f"{build_msg}: {build_result.get('stdout', '')[-500:]}"
+        full_path = Path(build_result["manifest"]["outputs"]["full"]["path"])
+        built_info = inspect_image(full_path.read_bytes())
+        assert built_info["patches"]["rows"] == 16, built_info["patches"]
+        assert built_info["patches"]["uart_baud"] == 1388889, built_info["patches"]
+        reject_ok, _, _ = eng.generate_patch(
+            base_id=entry["id"], allow_unknown_base=False,
+            out_root=tmp_root / "out")
+        assert not reject_ok, "unknown base accepted without confirmation"
+        firmware_build = True
+    except Exception as exc:
+        firmware_error = f"{type(exc).__name__}: {exc}"
+        print(f"Firmware studio selftest failed: {firmware_error}")
+
     # Check HTML
     html_ok = HTML_PATH.exists()
     html_markers = False
     if html_ok:
         html_text = HTML_PATH.read_text(encoding="utf-8")
-        html_markers = all(m in html_text for m in ('id="heat1"', 'id="heat2"',
-                                                    'id="waterfall"', 'id="map"',
-                                                    'id="surface3d"', 'id="fwOutput"'))
+        html_markers = all(m in html_text for m in (
+            'id="heat1"', 'id="heat2"', 'id="waterfall"', 'id="map"',
+            'id="surface3d"', 'id="fwOutput"', 'id="fwVaultList"',
+            'id="fwBase"', 'id="fwBuild"', 'id="fwImport"'))
     # Web Flasher page
     flasher_ok = FLASHER_PATH.exists()
     flasher_markers = False
@@ -2476,11 +2723,15 @@ def selftest() -> int:
         flasher_markers = all(m in flasher_text for m in ('id="flashFile"',
                                                           'id="flashStart"',
                                                           'id="flashLog"'))
-    # Patch script presence (without generating an image)
+    # Patch script and vault module presence (without generating an image)
     patch_script = (HERE / "patch_raw_window.py").exists()
+    vault_module = (HERE / "firmware_vault.py").exists()
     eng.shutdown()
+    shutil.rmtree(tmp_root, ignore_errors=True)
+    ok = (html_ok and html_markers and flasher_ok and flasher_markers
+          and patch_script and vault_module and vault_ok and firmware_build)
     print(json.dumps({
-        "ok": True,
+        "ok": ok,
         "rows": len(snap["raw"]["rx1"]["m"]),
         "cols": len(snap["raw"]["rx1"]["m"][0]),
         "detections": len(snap["raw"]["detections"]),
@@ -2490,10 +2741,13 @@ def selftest() -> int:
         "flasher_exists": flasher_ok,
         "flasher_markers": flasher_markers,
         "patch_script": patch_script,
+        "vault_module": vault_module,
+        "vault_ok": vault_ok,
+        "firmware_build": firmware_build,
+        "firmware_error": firmware_error,
         "version": snap["conn"]["version"],
     }, indent=2, ensure_ascii=False))
-    return 0 if (html_ok and html_markers and flasher_ok and flasher_markers
-                 and patch_script) else 1
+    return 0 if ok else 1
 
 
 # ---------------------------------------------------------------------------
@@ -2539,7 +2793,7 @@ def main() -> int:
         print(f"Replay file not found: {args.replay}", file=sys.stderr)
         return 2
 
-    for folder in (REC_DIR, SNAP_DIR, TUNING_DIR):
+    for folder in (REC_DIR, SNAP_DIR, TUNING_DIR, VAULT_DIR, FIRMWARE_OUT_DIR):
         folder.mkdir(parents=True, exist_ok=True)
 
     engine = Engine(cfg, source=source, replay_path=args.replay,

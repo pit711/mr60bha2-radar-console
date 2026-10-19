@@ -14,10 +14,12 @@ tuning/
 *.log
 flash_log.txt
 
-# Firmware images and backups (never commit these)
+# Firmware images, vault and generated tuning images (never commit these)
 *.bin
 *.hex
 *.elf
+firmware_vault/
+firmware_out/
 
 # Editor / OS
 .vscode/
