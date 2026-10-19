@@ -51,7 +51,7 @@ and raw/track operation on its own.
 
 | Part | Notes |
 |---|---|
-| MR60BHA2 / HLK-LD6002 | Andar ADT6101P, ARM Cortex-M3, 2 TX / 2 RX, 58–62 GHz |
+| [MR60BHA2 / HLK-LD6002](https://s.click.aliexpress.com/s/NdpwztbAIgDMmxGbP8fFks7yUFfsHjzlImSYmA68h7xlMRgzueFsRgokQ9f9hcpVKttxtQE2VzIoqkXJXrpOr6uR3zv7mP4CDO9CddoFf4t0QE5DXPy8Pgjhz4irfQSEjEGUmy5yF3A5gJ9h3NYjLMgqIMqa3zcpq5E2BC3W5EbV40Dm9buQxWpZzw1lbX8Zm2kZtNIa4KyDieNjsH7IU6Yv8StELKVvT9r4eFAaXPGhwHsgaDqdNcmY116r3GC2YvsOopeiiZPhJrV0cwgOQDSkW93v7gVKDqPkXyZF1oSWa6wSAOeznMFVlVZD9zyA9QdrGFo2UXqS0gFehbsDGfpb217YUkR2C52t6cEpAAo7G4eifesKnP7BPJWBOJW6SP3BPU5YHjkJrqsIvxCsTYRrA7VijGoRP7i7YIbiuCHGLemeKT1eECYuoAAOpTQJNPhsLZKkulVtm6v1wYggsC1uWIf8dTXQkSsQ6C9ZPsuTGU6YeJtAfHeMtWYFCu0dIoaBkjIirgIx6W655SdjJqABr73O2x9avxYWmnxORwoe3j1MmgmDpNJtlnO1gcr0JdnCD7XJhK5sLK9p8lW7XwpIM9ZwVQBO78Rxf10RDlAvTxqI7zVtu1ZrCMonsbF9Xf3dPzHjU6rVMFQZt9GtvUe0iNbKLh5lWuERUfYvViTn8xENVKarmKNMJPPR4Zqmp9wDvWJWXuZp8fJDATrxP7hDDc2RppAk18HBfC2rzGctA1XhOXrWvcekfi9kyOueXf9GEfyBg4i7n4mkh3HBh5pFbedue2j6kYm0lzZdObXKZxxKjQnl6iJBrNIhEmOdpd8GdgXfIylvmGkudFPC3HbDsSdvSchnvaJYtmpt5qEaeJnyszosRXkZsQbuVZmcpPVtUs8cmJrHM8ATeNsTJjKyS3x6JkLxCGO3iOjVBxnchYtmvBZU1Il229aHazxnwdhR9bXzczun1AKtOBDTkkcQGdzaQ0BYlroavqBUjr7uP) | Andar ADT6101P, ARM Cortex-M3, 2 TX / 2 RX, 58–62 GHz |
 | Seeed Studio XIAO ESP32 | USB-CDC bridge between the PC and the radar UART |
 | USB cable | Data cable, not charge-only |
 
