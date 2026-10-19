@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local configuration and runtime data
+advanced_dashboard_config.json
+recordings/
+snapshots/
+tuning/
+*.npz
+*.csv
+*.log
+flash_log.txt
+
+# Firmware images and backups (never commit these)
+*.bin
+*.hex
+*.elf
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

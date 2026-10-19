@@ -1,0 +1,2880 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Radar Control</title>
+<style>
+  :root {
+    --bg: #070b0f;
+    --bg-2: #0a1016;
+    --panel: #0d141c;
+    --panel-2: #111a23;
+    --panel-3: #16222d;
+    --line: #1d2a36;
+    --line-2: #263746;
+    --text: #dce7f2;
+    --text-dim: #8fa3b8;
+    --text-faint: #5e7185;
+    --accent: #4cc9f0;
+    --accent-2: #7ae582;
+    --warn: #ffd166;
+    --danger: #ff5d73;
+    --pink: #f72585;
+    --violet: #b388ff;
+    --shadow: 0 12px 30px rgba(0,0,0,.35);
+    --radius: 14px;
+    --mono: ui-monospace, "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, "Inter", Roboto, sans-serif;
+  }
+  body.light {
+    --bg: #e8eef4;
+    --bg-2: #f2f6fa;
+    --panel: #ffffff;
+    --panel-2: #f4f7fa;
+    --panel-3: #e9eff5;
+    --line: #cbd6e2;
+    --line-2: #b8c7d6;
+    --text: #17212b;
+    --text-dim: #4f6276;
+    --text-faint: #788a9c;
+    --accent: #0077b6;
+    --accent-2: #2a9d4b;
+    --warn: #b26a00;
+    --danger: #c81d3b;
+    --pink: #b5176a;
+    --violet: #6b4fbb;
+    --shadow: 0 10px 24px rgba(30,50,70,.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 800px at 70% -10%, rgba(76,201,240,.10), transparent 60%),
+                radial-gradient(900px 500px at 0% 110%, rgba(247,37,133,.07), transparent 55%),
+                var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    overflow: hidden;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 9px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* Header */
+  .topbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 10px 16px;
+    background: linear-gradient(180deg, rgba(255,255,255,.035), transparent), var(--panel);
+    border-bottom: 1px solid var(--line);
+    min-height: 62px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; min-width: 220px; }
+  .brand-mark {
+    width: 34px; height: 34px; display: grid; place-items: center;
+    border-radius: 10px;
+    background: linear-gradient(145deg, var(--accent), #2b6cb0);
+    color: #04121a; font-size: 20px; font-weight: 900;
+    box-shadow: 0 0 22px rgba(76,201,240,.35);
+  }
+  .brand h1 { margin: 0; font-size: 15px; letter-spacing: .16em; font-weight: 800; }
+  .brand span { display: block; color: var(--text-faint); font-size: 10px; letter-spacing: .1em; margin-top: 2px; }
+  .pills { display: flex; align-items: center; gap: 6px; flex: 1; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 9px; border-radius: 999px;
+    border: 1px solid var(--line-2);
+    background: var(--panel-2);
+    color: var(--text-dim);
+    font-size: 11px; white-space: nowrap;
+    font-family: var(--mono);
+  }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+  .pill.on { color: var(--accent-2); border-color: rgba(122,229,130,.35); background: rgba(122,229,130,.07); }
+  .pill.on i { background: var(--accent-2); box-shadow: 0 0 8px var(--accent-2); }
+  .pill.off { color: var(--text-faint); }
+  .pill.warn { color: var(--warn); border-color: rgba(255,209,102,.35); background: rgba(255,209,102,.07); }
+  .pill.rec { color: var(--danger); border-color: rgba(255,93,115,.4); background: rgba(255,93,115,.08); }
+  .pill.rec i { background: var(--danger); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  .top-actions { display: flex; gap: 8px; }
+
+  .btn {
+    border: 1px solid var(--line-2);
+    background: var(--panel-2);
+    color: var(--text);
+    padding: 7px 12px;
+    border-radius: 9px;
+    font-size: 12px;
+    transition: .15s ease;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn.primary { background: linear-gradient(145deg, rgba(76,201,240,.22), rgba(76,201,240,.08)); border-color: rgba(76,201,240,.5); color: var(--accent); }
+  .btn.primary:hover { background: rgba(76,201,240,.28); }
+  .btn.danger { color: var(--danger); border-color: rgba(255,93,115,.35); }
+  .btn.danger:hover { background: rgba(255,93,115,.12); }
+  .btn.small { padding: 5px 9px; font-size: 11px; border-radius: 7px; }
+  .btn.tiny { padding: 3px 7px; font-size: 10px; border-radius: 6px; }
+  .btn.active { color: var(--accent); border-color: var(--accent); background: rgba(76,201,240,.12); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+  /* Layout */
+  .layout { flex: 1; display: flex; min-height: 0; }
+  .sidebar {
+    width: 352px; flex: none;
+    display: flex; flex-direction: column;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    min-height: 0;
+  }
+  .side-top { padding: 10px 10px 8px; border-bottom: 1px solid var(--line); }
+  .search { position: relative; }
+  .search input {
+    width: 100%; padding: 8px 28px 8px 10px;
+    background: var(--panel-2); border: 1px solid var(--line-2);
+    border-radius: 8px; outline: none; font-size: 12px;
+  }
+  .search input:focus { border-color: var(--accent); }
+  .search span { position: absolute; right: 9px; top: 7px; color: var(--text-faint); }
+  .side-tabs { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; }
+  .side-tabs button, .main-tabs button {
+    border: 1px solid transparent; background: transparent; color: var(--text-dim);
+    padding: 4px 8px; border-radius: 7px; font-size: 11px;
+  }
+  .side-tabs button:hover, .main-tabs button:hover { color: var(--text); background: var(--panel-2); }
+  .side-tabs button.active { color: var(--accent); background: rgba(76,201,240,.10); border-color: rgba(76,201,240,.25); }
+  .preset-row { display: flex; gap: 6px; margin-top: 8px; }
+  .preset-row select {
+    flex: 1; min-width: 0; padding: 7px 9px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg-2); color: var(--text);
+    outline: none;
+  }
+  .preset-row select:focus { border-color: var(--accent); }
+  .side-scroll { flex: 1; overflow-y: auto; padding: 10px; min-height: 0; }
+  .side-panel { display: none; }
+  .side-panel.active { display: block; }
+  .side-foot {
+    flex: none; display: flex; gap: 6px; padding: 8px 10px;
+    border-top: 1px solid var(--line); background: var(--panel-2);
+  }
+  .side-foot .btn { flex: 1; }
+  @media (max-width: 980px) {
+    .sidebar { width: 310px; }
+    .brand { min-width: 0; }
+    .brand-text span { display: none; }
+  }
+  @media (max-width: 760px) {
+    .layout { flex-direction: column; }
+    .sidebar { width: 100%; height: 42vh; border-right: none; border-bottom: 1px solid var(--line); }
+    .content { height: 58vh; }
+    .brand-text { display: none; }
+  }
+
+  /* Main */
+  .content { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .main-tabs {
+    flex: none; display: flex; gap: 2px; padding: 8px 12px 0;
+    border-bottom: 1px solid var(--line); background: var(--bg-2);
+  }
+  .main-tabs button { padding: 8px 13px; font-size: 12px; border-radius: 8px 8px 0 0; }
+  .main-tabs button.active { color: var(--accent); border-color: var(--line); border-bottom-color: var(--bg-2); background: var(--bg-2); }
+  .views { flex: 1; overflow: auto; padding: 12px; min-height: 0; }
+  .view { display: none; }
+  .view.active { display: block; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .grid .wide { grid-column: span 2; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } .grid .wide { grid-column: span 1; } }
+
+  /* Cards */
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,.02), transparent), var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 10px 11px 9px;
+    min-width: 0;
+    box-shadow: var(--shadow);
+  }
+  .card.cfg-hidden { display: none; }
+  .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; min-height: 22px; }
+  .card-head h2 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--text); flex: 1; }
+  .badge {
+    font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+    border: 1px solid var(--line-2); background: var(--panel-2);
+    padding: 2px 6px; border-radius: 6px; white-space: nowrap;
+  }
+  .card-foot { margin-top: 6px; color: var(--text-faint); font-size: 10px; font-family: var(--mono); display: flex; gap: 12px; flex-wrap: wrap; }
+  .canvas { display: block; width: 100%; background: var(--bg-2); border-radius: 8px; border: 1px solid var(--line); }
+  .canvas.heat { height: 176px; }
+  .canvas.heat.big { height: 320px; }
+  .canvas.profile { height: 168px; }
+  .canvas.profile.big { height: 240px; }
+  .canvas.waterfall { height: 214px; }
+  .canvas.waterfall.big { height: 320px; }
+  .canvas.map { height: 360px; }
+  .canvas.map.big { height: 520px; }
+  .canvas.surface { height: 360px; cursor: grab; touch-action: none; }
+  .canvas.surface.big { height: 480px; }
+  .canvas.surface.dragging { cursor: grabbing; }
+  .canvas.rti { height: 224px; }
+  .canvas.rti.big { height: 340px; }
+  .canvas.spark { height: 76px; }
+  .hover-tip {
+    position: fixed; z-index: 120; display: none; pointer-events: none;
+    padding: 6px 8px; border-radius: 7px; border: 1px solid var(--line-2);
+    background: rgba(9, 15, 22, .94); color: var(--text);
+    font-family: var(--mono); font-size: 10.5px; line-height: 1.45;
+    box-shadow: 0 8px 22px rgba(0,0,0,.45);
+  }
+  .light .hover-tip { background: rgba(255,255,255,.97); }
+
+  /* Tables */
+  .table-wrap { overflow: auto; max-height: 270px; }
+  table.table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10.5px; }
+  table.table th { position: sticky; top: 0; background: var(--panel-2); color: var(--text-dim); text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line-2); font-weight: 600; }
+  table.table td { padding: 4px 6px; border-bottom: 1px solid rgba(120,150,180,.09); color: var(--text-dim); white-space: nowrap; }
+  table.table tr:hover td { background: rgba(76,201,240,.06); color: var(--text); }
+  table.table td.num { text-align: right; }
+  table.kv { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 11px; }
+  table.kv th { text-align: left; color: var(--text-faint); font-weight: 500; padding: 5px 6px; border-bottom: 1px solid rgba(120,150,180,.10); width: 42%; }
+  table.kv td { color: var(--text); padding: 5px 6px; border-bottom: 1px solid rgba(120,150,180,.10); }
+  .file-list { display: flex; flex-direction: column; gap: 4px; }
+  .file-item { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); }
+  .file-item a { color: var(--accent); text-decoration: none; font-family: var(--mono); font-size: 11px; word-break: break-all; }
+  .file-item a:hover { text-decoration: underline; }
+  .file-item .meta { color: var(--text-faint); font-size: 10px; font-family: var(--mono); }
+
+  /* Vitals */
+  .vital-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+  @media (max-width: 1100px) { .vital-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  .spark-label { color: var(--text-dim); font-size: 10px; margin-bottom: 3px; font-family: var(--mono); display: flex; justify-content: space-between; }
+  .vital-box { min-width: 0; }
+
+  /* Log */
+  .logbar {
+    flex: none; height: 156px; display: flex; flex-direction: column;
+    background: var(--panel); border-top: 1px solid var(--line);
+    transition: height .16s ease;
+  }
+  .logbar.collapsed { height: 30px; }
+  .logbar-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 5px 12px; border-bottom: 1px solid var(--line); color: var(--text-dim); font-size: 11px; }
+  .logbar-head span:first-child { font-weight: 700; letter-spacing: .08em; color: var(--text); }
+  .logbar-head .btn { margin-left: auto; }
+  .log-rows { flex: 1; overflow: auto; padding: 5px 10px; font-family: var(--mono); font-size: 10.5px; }
+  .log-rows.big { max-height: none; height: calc(100vh - 220px); }
+  .log-row { display: grid; grid-template-columns: 64px 48px 1fr; gap: 8px; padding: 2px 0; border-bottom: 1px solid rgba(120,150,180,.06); }
+  .log-row .t { color: var(--text-faint); }
+  .log-row .lv { font-weight: 700; text-transform: uppercase; font-size: 9px; padding-top: 2px; }
+  .log-row .msg { color: var(--text-dim); word-break: break-word; }
+  .log-row.info .lv { color: var(--accent); }
+  .log-row.warn .lv { color: var(--warn); }
+  .log-row.error .lv { color: var(--danger); }
+  .log-row.radar .lv { color: var(--violet); }
+  .log-row.tx .lv { color: var(--accent-2); }
+  .log-row.info .msg { color: var(--text); }
+
+  /* Forms */
+  .group { border-bottom: 1px solid var(--line); padding: 8px 2px 12px; margin-bottom: 6px; }
+  .group:last-child { border-bottom: none; }
+  .group h3 { margin: 0 0 7px; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+  .group p { margin: 0 0 8px; color: var(--text-dim); font-size: 11px; line-height: 1.45; }
+  .group.warning { border: 1px solid rgba(255,209,102,.28); background: rgba(255,209,102,.05); border-radius: 8px; padding: 9px; }
+  .group.warning h3 { color: var(--warn); }
+  .group.warning p { margin: 0; }
+  .ctl { display: block; margin: 7px 0; }
+  .ctl > .lbl { display: flex; justify-content: space-between; gap: 8px; color: var(--text-dim); font-size: 11px; margin-bottom: 3px; }
+  .ctl > .lbl .u { color: var(--text-faint); font-family: var(--mono); font-size: 10px; }
+  .ctl .hint { color: var(--text-faint); font-size: 10px; line-height: 1.35; margin-top: 3px; }
+  .ctl .row { display: flex; align-items: center; gap: 6px; }
+  .ctl input[type=range] { flex: 1; accent-color: var(--accent); height: 18px; }
+  .ctl input[type=number], .ctl input[type=text], .ctl select {
+    width: 100%; padding: 5px 7px; border-radius: 6px;
+    border: 1px solid var(--line-2); background: var(--panel-2); outline: none;
+    font-family: var(--mono); font-size: 11px;
+  }
+  .ctl input[type=number] { width: 78px; flex: none; text-align: right; }
+  .ctl input:focus, .ctl select:focus { border-color: var(--accent); }
+  .ctl input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+  .ctl .check { display: flex; align-items: center; gap: 7px; cursor: pointer; color: var(--text); }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .mini { color: var(--text-faint); font-size: 10px; line-height: 1.4; margin-top: 5px; font-family: var(--mono); }
+  .output {
+    margin: 7px 0 0; padding: 7px; max-height: 190px; overflow: auto;
+    background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px;
+    color: var(--text-dim); font-family: var(--mono); font-size: 10px; white-space: pre-wrap; word-break: break-word;
+  }
+  .manifest { margin-top: 7px; }
+  .manifest table.kv { font-size: 10px; }
+  .flash-cmd { display: block; padding: 7px; background: rgba(255,93,115,.06); border: 1px solid rgba(255,93,115,.3); border-radius: 6px; color: var(--warn); font-family: var(--mono); font-size: 10px; word-break: break-all; margin-top: 6px; }
+  .notice { border: 1px solid rgba(255,209,102,.3); background: rgba(255,209,102,.06); color: var(--warn); padding: 9px 10px; border-radius: 8px; font-size: 11px; line-height: 1.5; margin-bottom: 10px; }
+  .okline { color: var(--accent-2); }
+  .errline { color: var(--danger); }
+
+  /* Toast */
+  .toast {
+    position: fixed; right: 16px; bottom: 170px; display: flex; flex-direction: column; gap: 6px;
+    z-index: 100; pointer-events: none; max-width: min(420px, calc(100vw - 32px));
+  }
+  .toast-item {
+    background: var(--panel-3); border: 1px solid var(--line-2); color: var(--text);
+    border-left: 3px solid var(--accent); padding: 8px 11px; border-radius: 8px;
+    box-shadow: var(--shadow); font-size: 12px; animation: slidein .16s ease;
+  }
+  .toast-item.err { border-left-color: var(--danger); }
+  .toast-item.ok { border-left-color: var(--accent-2); }
+  @keyframes slidein { from { transform: translateX(14px); opacity: 0; } }
+
+  .empty { color: var(--text-faint); font-size: 11px; padding: 14px; text-align: center; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">◈</div>
+      <div class="brand-text">
+        <h1>RADAR CONTROL</h1>
+        <span>MR60BHA2 · ADT6101P · Range-Doppler</span>
+      </div>
+    </div>
+    <div class="pills">
+      <span class="pill" id="pillSource">Source –</span>
+      <span class="pill off" id="pillConn"><i></i>Disconnected</span>
+      <span class="pill" id="pillMode">Mode –</span>
+      <span class="pill" id="pillVersion">FW –</span>
+      <span class="pill" id="pillRate">0.0 Hz</span>
+      <span class="pill" id="pillBytes">0 kB/s</span>
+      <span class="pill off" id="pillRec">REC off</span>
+      <span class="pill off" id="pillAuto">AUTO off</span>
+    </div>
+    <div class="top-actions">
+      <button class="btn" id="btnAuto" title="Toggle automatic mode">AUTO</button>
+      <button class="btn primary" id="btnConnect">Connect</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="side-top">
+        <div class="search">
+          <input id="search" placeholder="Search parameters …" autocomplete="off">
+          <span>⌕</span>
+        </div>
+        <div class="side-tabs" id="controlTabs">
+          <button data-panel="live" class="active">Live</button>
+          <button data-panel="dsp">DSP</button>
+          <button data-panel="det">Detection</button>
+          <button data-panel="vital">Vitals</button>
+          <button data-panel="ui">View</button>
+          <button data-panel="auto">Auto</button>
+          <button data-panel="rec">Recording</button>
+          <button data-panel="fw">Firmware</button>
+          <button data-panel="log">Log</button>
+        </div>
+        <div class="preset-row">
+          <select id="presetSelect" title="Choose a preset"></select>
+          <button class="btn small" id="btnPreset">Load</button>
+        </div>
+      </div>
+
+      <div class="side-scroll" id="sideScroll">
+        <section class="side-panel active" data-panel="live">
+          <div class="group">
+            <h3>Connection</h3>
+            <div class="btn-row">
+              <button class="btn primary small" data-act="connect">Connect</button>
+              <button class="btn small" data-act="disconnect">Disconnect</button>
+              <button class="btn small" data-act="reconnect">Reconnect</button>
+            </div>
+            <div class="mini" id="connInfo">–</div>
+          </div>
+          <div class="gen" data-gen="live"></div>
+          <div class="group">
+            <h3>Radar commands (live)</h3>
+            <div class="btn-grid">
+              <button class="btn small" data-act="version">Version</button>
+              <button class="btn small" data-act="raw_on">Raw ON</button>
+              <button class="btn small" data-act="raw_off">Track / Raw OFF</button>
+              <button class="btn small" data-act="zone_read">Read zone</button>
+              <button class="btn small" data-act="zone_reset">Zone reset</button>
+              <button class="btn small" data-act="echo">Echo</button>
+              <button class="btn small" data-act="flag">Flag 0x0A13</button>
+              <button class="btn small" data-act="zone_set">Set zone</button>
+              <button class="btn small" data-act="custom_frame">Send custom</button>
+            </div>
+            <div class="mini">Live commands go directly to the radar. Zone values and the custom payload are set in the parameter block above.</div>
+          </div>
+        </section>
+
+        <section class="side-panel" data-panel="dsp"><div class="gen" data-gen="dsp"></div></section>
+        <section class="side-panel" data-panel="det"><div class="gen" data-gen="det"></div></section>
+        <section class="side-panel" data-panel="vital"><div class="gen" data-gen="vital"></div></section>
+        <section class="side-panel" data-panel="ui"><div class="gen" data-gen="ui"></div></section>
+
+        <section class="side-panel" data-panel="auto">
+          <div class="gen" data-gen="auto"></div>
+          <div class="group">
+            <h3>Auto control</h3>
+            <div class="btn-row">
+              <button class="btn primary small" data-act="auto_preset">Enable auto suite</button>
+              <button class="btn small" data-act="auto_off">Auto off</button>
+            </div>
+            <div class="mini" id="autoInfo">–</div>
+          </div>
+        </section>
+
+        <section class="side-panel" data-panel="rec">
+          <div class="gen" data-gen="rec"></div>
+          <div class="group">
+            <h3>Recording / export</h3>
+            <div class="btn-grid">
+              <button class="btn primary small" data-act="record_start">Start recording</button>
+              <button class="btn small" data-act="record_stop">Stop recording</button>
+              <button class="btn small" data-act="snapshot">Snapshot</button>
+              <button class="btn small" data-act="export_csv">Detections as CSV</button>
+            </div>
+            <div class="mini" id="recInfo">–</div>
+          </div>
+          <div class="group">
+            <h3>Files</h3>
+            <div id="fileList" class="file-list"></div>
+          </div>
+        </section>
+
+        <section class="side-panel" data-panel="fw">
+          <div class="group warning">
+            <h3>Firmware tuning</h3>
+            <p>These parameters change the radar firmware and only take effect after a flash. The dashboard only generates an image and shows hashes plus the manual flash command. <b>It never flashes automatically.</b></p>
+          </div>
+          <div class="gen" data-gen="fw"></div>
+          <div class="group">
+            <h3>Generate image</h3>
+            <button class="btn primary small" data-act="generate_patch">Create tuning image</button>
+            <div class="mini" id="fwInfo">No image generated yet.</div>
+            <pre id="fwOutput" class="output">–</pre>
+            <div id="fwManifest" class="manifest"></div>
+          </div>
+        </section>
+
+        <section class="side-panel" data-panel="log">
+          <div class="group">
+            <h3>Log</h3>
+            <div class="btn-row">
+              <button class="btn small" data-act="clear_log">Clear log</button>
+              <button class="btn small" id="btnDownloadLog">Download log</button>
+            </div>
+            <div class="mini" id="logInfo">–</div>
+          </div>
+        </section>
+      </div>
+
+      <div class="side-foot">
+        <button class="btn small" id="btnExportCfg">Config export</button>
+        <button class="btn small" id="btnImportCfg">Config import</button>
+        <button class="btn small danger" data-act="reset_config">Reset</button>
+        <input type="file" id="cfgFile" accept="application/json" hidden>
+      </div>
+    </aside>
+
+    <main class="content">
+      <nav class="main-tabs" id="mainTabs">
+        <button data-view="live" class="active">Live</button>
+        <button data-view="analyse">Analysis</button>
+        <button data-view="map">Room map</button>
+        <button data-view="vitals">Vitals</button>
+        <button data-view="record">Recordings</button>
+        <button data-view="firmware">Firmware</button>
+        <button data-view="log">Log</button>
+      </nav>
+
+      <div class="views">
+        <section class="view active" id="view-live">
+          <div class="grid">
+            <article class="card" data-show="ui_show_rx1">
+              <div class="card-head"><h2>RX1 · Range × Doppler</h2><span class="badge" id="badgeRx1">–</span></div>
+              <canvas id="heat1" class="canvas heat"></canvas>
+              <div class="card-foot" id="footRx1">–</div>
+            </article>
+            <article class="card" data-show="ui_show_rx2">
+              <div class="card-head"><h2>RX2 · Range × Doppler</h2><span class="badge" id="badgeRx2">–</span></div>
+              <canvas id="heat2" class="canvas heat"></canvas>
+              <div class="card-foot" id="footRx2">–</div>
+            </article>
+            <article class="card wide" data-show="ui_show_fusion">
+              <div class="card-head"><h2 id="combTitle">RX1 + RX2 · Magnitude</h2><span class="badge" id="badgeComb">–</span></div>
+              <canvas id="heatCombined" class="canvas heat"></canvas>
+              <div class="card-foot" id="footComb">–</div>
+            </article>
+            <article class="card wide" data-show="ui_show_rti">
+              <div class="card-head"><h2>Range-time · RTI</h2><span class="badge" id="rtiMeta">–</span></div>
+              <canvas id="rangeTime" class="canvas rti"></canvas>
+              <div class="card-foot">Distance over time · newest row on top</div>
+            </article>
+            <article class="card wide" data-show="ui_show_range">
+              <div class="card-head"><h2>Range profile</h2><span class="badge">Power over distance</span></div>
+              <canvas id="profile" class="canvas profile"></canvas>
+            </article>
+            <article class="card" data-show="ui_show_doppler">
+              <div class="card-head"><h2>Doppler profile</h2><span class="badge">Velocity</span></div>
+              <canvas id="doppler" class="canvas profile"></canvas>
+            </article>
+            <article class="card" data-show="ui_show_waterfall">
+              <div class="card-head"><h2>Waterfall</h2><span class="badge" id="wfMeta">–</span></div>
+              <canvas id="waterfall" class="canvas waterfall"></canvas>
+            </article>
+            <article class="card" data-show="ui_show_detections">
+              <div class="card-head"><h2>Detections</h2><span class="badge" id="detMeta">–</span></div>
+              <div class="table-wrap">
+                <table class="table" id="detTable">
+                  <thead><tr><th>#</th><th>Range</th><th>v</th><th>Level</th><th>SNR</th><th>Channel</th><th>Bin</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="card" data-show="ui_show_map">
+              <div class="card-head"><h2>Room map</h2><span class="badge" id="mapMeta">–</span></div>
+              <canvas id="map" class="canvas map"></canvas>
+            </article>
+            <article class="card" data-show="ui_show_3d">
+              <div class="card-head"><h2>3D surface · interactive</h2><span class="badge" id="surfMeta">–</span></div>
+              <canvas id="surface3d" class="canvas surface"></canvas>
+              <div class="card-foot">Drag = rotate · wheel = zoom · double-click = reset</div>
+            </article>
+            <article class="card wide" data-show="ui_show_vitals">
+              <div class="card-head"><h2>Vitals</h2><span class="badge" id="vitalMeta">–</span></div>
+              <div class="vital-grid">
+                <div class="vital-box"><div class="spark-label"><span>Total phase</span><span id="vitTotalVal">–</span></div><canvas id="vitTotal" class="canvas spark"></canvas></div>
+                <div class="vital-box"><div class="spark-label"><span>Breathing</span><span id="vitBreathVal">–</span></div><canvas id="vitBreath" class="canvas spark"></canvas></div>
+                <div class="vital-box"><div class="spark-label"><span>Heart</span><span id="vitHeartVal">–</span></div><canvas id="vitHeart" class="canvas spark"></canvas></div>
+                <div class="vital-box"><div class="spark-label"><span>FFT</span><span id="vitFftVal">–</span></div><canvas id="vitalFFT" class="canvas spark"></canvas></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="view-analyse">
+          <div class="grid">
+            <article class="card wide">
+              <div class="card-head"><h2 id="bigTitle">Combined range-Doppler image</h2><span class="badge" id="badgeBig">–</span></div>
+              <canvas id="heatBig" class="canvas heat big"></canvas>
+            </article>
+            <article class="card wide">
+              <div class="card-head"><h2>Range-time · RTI (large)</h2><span class="badge" id="rtiBigMeta">–</span></div>
+              <canvas id="rangeTimeBig" class="canvas rti big"></canvas>
+            </article>
+            <article class="card">
+              <div class="card-head"><h2>Range profile</h2><span class="badge">RX1 / RX2 / mean</span></div>
+              <canvas id="profileBig" class="canvas profile big"></canvas>
+            </article>
+            <article class="card">
+              <div class="card-head"><h2>Doppler profile</h2><span class="badge">RX1 / RX2 / mean</span></div>
+              <canvas id="dopplerBig" class="canvas profile big"></canvas>
+            </article>
+            <article class="card wide">
+              <div class="card-head"><h2>Waterfall</h2><span class="badge" id="wfBigMeta">–</span></div>
+              <canvas id="waterfallBig" class="canvas waterfall big"></canvas>
+            </article>
+            <article class="card wide">
+              <div class="card-head"><h2>Key metrics</h2><span class="badge">Live</span></div>
+              <div id="statsTable"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="view-map">
+          <div class="grid">
+            <article class="card wide">
+              <div class="card-head"><h2>Room map</h2><span class="badge" id="mapBigMeta">–</span></div>
+              <canvas id="mapBig" class="canvas map big"></canvas>
+            </article>
+            <article class="card">
+              <div class="card-head"><h2>Target / presence</h2><span class="badge">Radar + raw data</span></div>
+              <div id="targetInfo"></div>
+            </article>
+            <article class="card">
+              <div class="card-head"><h2>Point cloud</h2><span class="badge" id="pointMeta">–</span></div>
+              <div id="pointTable" class="table-wrap"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="view-vitals">
+          <div class="grid">
+            <article class="card wide">
+              <div class="card-head"><h2>Phase / breathing / heart</h2><span class="badge" id="vitBigMeta">–</span></div>
+              <canvas id="vitBig" class="canvas profile big"></canvas>
+            </article>
+            <article class="card wide">
+              <div class="card-head"><h2>Breathing and heart rate spectrum</h2><span class="badge" id="fftBigMeta">–</span></div>
+              <canvas id="vitalFFTBig" class="canvas profile big"></canvas>
+            </article>
+            <article class="card wide">
+              <div class="card-head"><h2>Vital values</h2><span class="badge">Radar + local FFT</span></div>
+              <div id="vitalStats"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="view-record">
+          <div class="grid">
+            <article class="card wide">
+              <div class="card-head"><h2>Recordings, snapshots and detections</h2><button class="btn small" id="btnRefreshFiles">Refresh</button></div>
+              <div id="fileTable"></div>
+            </article>
+            <article class="card wide">
+              <div class="card-head"><h2>Recording status</h2><span class="badge" id="recViewMeta">–</span></div>
+              <div id="recStatus"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="view-firmware">
+          <div class="grid">
+            <article class="card wide">
+              <div class="card-head"><h2>Firmware tuning</h2><span class="badge">Image generation only</span></div>
+              <div class="notice">TIA/VGA/PA/HPF, range window and UART baud rate are <b>firmware patches</b>. They are only generated as an image here. Flashing is done exclusively by the user through the <a href="/flasher" target="_blank" rel="noopener">Web Flasher</a> after explicit confirmation. The dashboard never flashes by itself.</div>
+              <div class="btn-row" style="margin-bottom:10px">
+                <button class="btn primary small" data-act="generate_patch">Create tuning image</button>
+                <a class="btn small" href="/flasher" target="_blank" rel="noopener">Open Web Flasher</a>
+              </div>
+              <div id="fwViewInfo" class="mini">No image generated yet.</div>
+              <pre id="fwViewOutput" class="output" style="max-height:320px">–</pre>
+              <div id="fwViewManifest"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="view-log">
+          <div class="grid">
+            <article class="card wide">
+              <div class="card-head"><h2>Full log</h2><span class="badge" id="logViewInfo">–</span><button class="btn small" id="btnLogScroll">Auto-scroll on</button></div>
+              <div id="logView" class="log-rows big"></div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="logbar" id="logbar">
+    <div class="logbar-head">
+      <span>Live log</span>
+      <span id="logbarInfo" class="mini" style="margin:0">–</span>
+      <button class="btn tiny" id="logToggle">collapse</button>
+    </div>
+    <div id="logbarRows" class="log-rows"></div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+<div id="hoverTip" class="hover-tip"></div>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ */
+/* Utilities                                                          */
+/* ------------------------------------------------------------------ */
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const num = (v, d = 2) => (v === null || v === undefined || !Number.isFinite(Number(v))) ? "–" : Number(v).toFixed(d);
+const int = (v) => (v === null || v === undefined || !Number.isFinite(Number(v))) ? "–" : String(Math.round(Number(v)));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtBytes = (n) => { n = +n || 0; if (n < 1024) return n + " B"; if (n < 1048576) return (n / 1024).toFixed(1) + " kB"; return (n / 1048576).toFixed(2) + " MB"; };
+const timeStr = (t) => { if (!t) return "–"; const d = new Date(t * 1000); return d.toLocaleTimeString("en-GB", { hour12: false }); };
+const dateStr = (iso) => iso ? String(iso).replace("T", " ") : "–";
+
+const state = {
+  config: {}, defaults: {}, presets: {}, files: [], logs: [],
+  snap: null, wf: [], wfCols: 0, trail: [], phaseHist: [],
+  lastVitalSeq: -1, lastSnapAt: 0, view: "live", control: "live",
+  configLoaded: false, configQueue: {}, cfgTimer: null, pending: {},
+  lastPatch: null, logAutoScroll: true, es: null, connected: false,
+  persist: {}, rti: [], surf: { yaw: -0.52, pitch: 1.02, zoom: 1 },
+};
+
+function toast(msg, kind = "") {
+  const box = $("#toast");
+  const el = document.createElement("div");
+  el.className = "toast-item " + kind;
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; el.style.transform = "translateX(10px)"; }, 3300);
+  setTimeout(() => el.remove(), 3700);
+}
+
+async function api(path, body) {
+  const opts = body === undefined ? {} : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+  const res = await fetch(path, opts);
+  let data = null;
+  try { data = await res.json(); } catch (_) { data = { ok: false, error: "Response is not JSON" }; }
+  if (!res.ok || data.ok === false) throw new Error(data.error || data.message || ("HTTP " + res.status));
+  return data;
+}
+
+/* ------------------------------------------------------------------ */
+/* Theme / colors                                                     */
+/* ------------------------------------------------------------------ */
+function isLight() { return document.body.classList.contains("light"); }
+function themeColors() {
+  const light = isLight();
+  return {
+    grid: light ? "rgba(20,50,80,.14)" : "rgba(140,170,200,.14)",
+    text: light ? "#455a70" : "#91a6bb",
+    dim: light ? "#6c8094" : "#607386",
+    axis: light ? "rgba(25,60,95,.4)" : "rgba(160,190,220,.32)",
+    bg: light ? "#eef3f8" : "#0a1016",
+    panel: light ? "#ffffff" : "#0d141c",
+  };
+}
+
+const COLORMAPS = {
+  magma: [[0,0,4],[28,16,68],[79,18,123],[129,37,129],[181,54,122],[229,80,100],[251,135,97],[254,194,135],[252,253,191]],
+  inferno: [[0,0,4],[31,12,72],[85,15,109],[136,34,106],[186,54,85],[227,89,51],[249,140,10],[249,201,50],[252,255,164]],
+  viridis: [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],[31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]],
+  turbo: [[48,18,59],[70,107,227],[40,187,235],[53,233,149],[156,246,60],[230,205,42],[253,125,31],[219,53,8],[122,4,3]],
+  grayscale: [[8,10,12],[245,248,250]],
+  icefire: [[8,12,72],[28,78,140],[38,150,190],[130,220,235],[245,245,245],[250,180,120],[240,100,60],[170,30,40],[70,5,25]],
+};
+
+function colorAt(name, t) {
+  t = clamp(Number(t) || 0, 0, 1);
+  if (name === "hsv") {
+    const h = (1 - t) * 255;
+    return hslToRgb(h / 360, 0.85, 0.18 + 0.55 * t);
+  }
+  const stops = COLORMAPS[name] || COLORMAPS.magma;
+  const x = t * (stops.length - 1);
+  const i = Math.floor(x), f = x - i;
+  const a = stops[i], b = stops[Math.min(i + 1, stops.length - 1)];
+  return [Math.round(a[0] + (b[0] - a[0]) * f), Math.round(a[1] + (b[1] - a[1]) * f), Math.round(a[2] + (b[2] - a[2]) * f)];
+}
+function hslToRgb(h, s, l) {
+  const f = (n) => {
+    const k = (n + h * 12) % 12;
+    const a = s * Math.min(l, 1 - l);
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
+function setupCanvas(canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(40, rect.width || canvas.clientWidth || 300);
+  const h = Math.max(30, rect.height || canvas.clientHeight || 120);
+  const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+  if (canvas.width !== pw || canvas.height !== ph) { canvas.width = pw; canvas.height = ph; }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+
+function clearCanvas(canvas, msg) {
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.fillStyle = themeColors().text;
+  ctx.font = "11px " + getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(msg, w / 2, h / 2);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+}
+
+function drawLegend(ctx, x, y, items) {
+  const tc = themeColors();
+  ctx.font = "10px " + getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.textBaseline = "middle";
+  for (const it of items) {
+    ctx.strokeStyle = it.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 12, y); ctx.stroke();
+    ctx.fillStyle = tc.text; ctx.fillText(it.label, x + 16, y);
+    x += 16 + ctx.measureText(it.label).width + 12;
+    if (x > 460) { x = 44; y += 12; }
+  }
+  ctx.textBaseline = "alphabetic";
+}
+
+/* ------------------------------------------------------------------ */
+/* Control schema                                                     */
+/* ------------------------------------------------------------------ */
+const SCHEMA = [
+  { panel: "live", title: "Connection", items: [
+    { k: "conn_port", label: "COM port", type: "text", hint: "USB-CDC port of the XIAO bridge, e.g. COM3." },
+    { k: "conn_baud", label: "Baud rate", type: "num", min: 9600, max: 3000000, step: 1, unit: "baud", hint: "USB-CDC effectively ignores the baud rate; only relevant for real UART bridges." },
+    { k: "conn_auto_connect", label: "Auto-connect on start", type: "bool" },
+    { k: "conn_auto_reconnect", label: "Auto-reconnect", type: "bool" },
+    { k: "conn_reconnect_s", label: "Reconnect interval", type: "num", min: 0.2, max: 60, step: 0.1, unit: "s" },
+    { k: "conn_on_connect_version", label: "Read version on connect", type: "bool" },
+    { k: "conn_on_connect_mode", label: "Mode on connect", type: "sel", options: [["raw", "Raw data (0x0A14)"], ["track", "Tracking (0x0A15)"], ["keep", "Unchanged"]] },
+    { k: "conn_on_connect_zone_read", label: "Read zone on connect", type: "bool" },
+  ]},
+  { panel: "live", title: "Radar parameters (commands)", items: [
+    { k: "radar_zone_min", label: "Zone min", type: "num", min: 0, max: 100000, step: 10, unit: "cm", hint: "Minimum distance of the presence zone (0x0A16)." },
+    { k: "radar_zone_max", label: "Zone max", type: "num", min: 0, max: 100000, step: 10, unit: "cm", hint: "Maximum distance of the presence zone (0x0A17)." },
+    { k: "radar_zone_width", label: "Zone width", type: "num", min: 0, max: 100000, step: 10, unit: "cm", hint: "Width of the zone (0x0A18)." },
+    { k: "radar_echo_value", label: "Echo test value", type: "num", min: 0, max: 4294967295, step: 1, hint: "u32 for 0x0A12; the reply arrives as 0x0A20." },
+    { k: "radar_flag_value", label: "Flag 0x0A13", type: "num", min: 0, max: 4294967295, step: 1, hint: "Unknown u32 flag. For testing only." },
+    { k: "cmd_custom_type", label: "Custom frame type", type: "text", hint: "Hex or decimal, e.g. 0x0A20. 0x3000/0x4000 are blocked." },
+    { k: "cmd_custom_hex", label: "Custom payload (hex)", type: "text", hint: "e.g. 01 02 03 04. Empty = no payload." },
+  ]},
+  { panel: "dsp", title: "Raw data / calibration", items: [
+    { k: "dsp_rows", label: "Rows (window)", type: "sel", options: [["0", "Auto (from payload)"], ["8", "8 (1.0 m)"], ["16", "16 (2.0 m)"], ["32", "32 (4.0 m)"]], hint: "The actual row count comes from the firmware (8/16/32)." },
+    { k: "dsp_range_start_m", label: "Range start", type: "num", min: 0.05, max: 20, step: 0.01, unit: "m", hint: "Center of the first range bin." },
+    { k: "dsp_range_step_m", label: "Range step", type: "num", min: 0.005, max: 2, step: 0.005, unit: "m", hint: "Spacing of the range bins; 0.125 m for 8 rows over 1 m." },
+    { k: "dsp_doppler_bin_mps", label: "Doppler per bin", type: "num", min: 0.0001, max: 2, step: 0.0001, unit: "m/s", hint: "Velocity resolution of one Doppler bin." },
+    { k: "dsp_doppler_zero_bin", label: "Doppler zero bin", type: "num", min: 0, max: 63, step: 1, unit: "bin", hint: "Bin of zero velocity (typically 16 with 32 bins)." },
+  ]},
+  { panel: "dsp", title: "Filters / display", items: [
+    { k: "dsp_iq_view", label: "IQ view", type: "sel", options: [["magnitude", "Magnitude (dB)"], ["real", "Real part I"], ["imag", "Imaginary part Q"], ["phase", "Phase (°)"], ["power", "Power (dB)"]], hint: "Applies to the heatmaps; profiles and detection always use power." },
+    { k: "dsp_heat_mode", label: "Multispectrum mode", type: "sel", options: [["magnitude", "Magnitude (RX1+RX2)"], ["fusion", "Dual-channel fusion (RGB)"], ["motion", "Motion map (Δ frame)"], ["snr", "SNR map"], ["difference", "Channel difference RX1−RX2"]], hint: "Controls the combined heatmap: fusion shows RX1 in cyan and RX2 in red, motion highlights changes, SNR normalizes to the noise floor." },
+    { k: "dsp_heat_gamma", label: "Tone-mapping gamma", type: "num", min: 0.2, max: 4, step: 0.1, hint: "1 = linear, >1 brightens weak targets, <1 emphasizes strong peaks." },
+    { k: "dsp_heat_equalize", label: "Histogram equalization", type: "bool", hint: "Distributes colors by rank instead of linearly – maximum contrast for weak structures." },
+    { k: "dsp_persistence", label: "Persistence / afterglow", type: "num", min: 0, max: 0.95, step: 0.01, hint: "Afterglow of the heatmaps; 0 = off, 0.8 = long motion trails." },
+    { k: "dsp_det_overlay", label: "Detections on heatmap", type: "bool", hint: "Marks peaks directly in the image with range/Doppler/SNR." },
+    { k: "dsp_peak_overlay", label: "Mark global peak", type: "bool" },
+    { k: "dsp_clutter_remove", label: "Clutter filter (slow background)", type: "bool", hint: "Subtracts a slowly tracked background; highlights motion." },
+    { k: "dsp_clutter_alpha", label: "Clutter alpha", type: "num", min: 0.0001, max: 0.9, step: 0.0001, hint: "Smaller = sluggish background, larger = faster adaptation." },
+    { k: "dsp_smooth_alpha", label: "Image smoothing", type: "num", min: 0, max: 0.99, step: 0.01, hint: "0 = off, 0.2 = light, 0.8 = strong." },
+    { k: "dsp_display_gain_db", label: "Display gain", type: "num", min: -60, max: 60, step: 0.5, unit: "dB", hint: "Added to magnitude/power (not used with auto-gain)." },
+    { k: "dsp_auto_contrast", label: "Auto contrast", type: "bool", hint: "Color range from percentiles of the current image." },
+    { k: "dsp_contrast_low_pct", label: "Contrast low", type: "num", min: 0, max: 60, step: 0.5, unit: "%" },
+    { k: "dsp_contrast_high_pct", label: "Contrast high", type: "num", min: 40, max: 100, step: 0.5, unit: "%" },
+    { k: "dsp_db_min", label: "dB minimum (manual)", type: "num", min: -200, max: 200, step: 0.5, unit: "dB" },
+    { k: "dsp_db_max", label: "dB maximum (manual)", type: "num", min: -200, max: 200, step: 0.5, unit: "dB" },
+    { k: "dsp_colormap", label: "Colormap", type: "sel", options: [["magma", "Magma"], ["viridis", "Viridis"], ["inferno", "Inferno"], ["turbo", "Turbo"], ["grayscale", "Grayscale"], ["hsv", "HSV (phase)"], ["icefire", "Icefire (I/Q)"]] },
+    { k: "dsp_interp", label: "Interpolation", type: "bool", hint: "Smooth rendering instead of hard pixels." },
+    { k: "dsp_show_grid", label: "Grid on heatmap", type: "bool" },
+  ]},
+  { panel: "dsp", title: "Stream / waterfall / 3D", items: [
+    { k: "dsp_stream_hz", label: "Stream rate", type: "num", min: 2, max: 30, step: 1, unit: "Hz", hint: "Browser refresh rate (not the radar rate)." },
+    { k: "dsp_waterfall_rows", label: "Waterfall rows", type: "num", min: 20, max: 1000, step: 10, unit: "rows" },
+    { k: "dsp_waterfall_mode", label: "Waterfall row", type: "sel", options: [["auto", "Auto (strongest range)"], ["max", "Maximum"], ["manual", "Manual"]] },
+    { k: "dsp_waterfall_row", label: "Manual row", type: "num", min: 0, max: 63, step: 1, unit: "row" },
+    { k: "dsp_3d_source", label: "3D source", type: "sel", options: [["combined", "RX1 + RX2"], ["rx1", "RX1"], ["rx2", "RX2"]] },
+    { k: "dsp_3d_rotate", label: "Auto-rotate 3D", type: "bool" },
+    { k: "dsp_3d_light", label: "3D Lambert lighting", type: "bool", hint: "Shades the surface by slope – highlights edges and targets." },
+    { k: "dsp_3d_wireframe", label: "3D wireframe", type: "bool" },
+    { k: "ui_3d_height", label: "3D height", type: "num", min: 0.1, max: 5, step: 0.1, hint: "Vertical exaggeration of the level." },
+    { k: "ui_3d_decimate", label: "3D decimation", type: "num", min: 1, max: 8, step: 1, hint: "1 = full resolution; higher = fewer grid points." },
+  ]},
+  { panel: "det", title: "Detection", items: [
+    { k: "det_enabled", label: "Detection enabled", type: "bool" },
+    { k: "det_channel", label: "Channel", type: "sel", options: [["mean", "RX1+RX2 mean"], ["rx1", "RX1"], ["rx2", "RX2"], ["max", "Maximum"]] },
+    { k: "det_method", label: "Method", type: "sel", options: [["localmax", "Local maximum + threshold"], ["cfar", "CFAR"]] },
+    { k: "det_noise_mode", label: "Noise floor", type: "sel", options: [["auto", "Auto (percentile)"], ["manual", "Manual"]] },
+    { k: "det_manual_noise_db", label: "Manual noise floor", type: "num", min: -200, max: 200, step: 0.5, unit: "dB" },
+    { k: "det_noise_percentile", label: "Noise percentile", type: "num", min: 0, max: 80, step: 0.5, unit: "%" },
+    { k: "det_threshold_db", label: "Threshold above noise", type: "num", min: 0, max: 80, step: 0.5, unit: "dB" },
+    { k: "det_cfar_guard", label: "CFAR guard cells", type: "num", min: 0, max: 10, step: 1, unit: "cells" },
+    { k: "det_cfar_train", label: "CFAR training cells", type: "num", min: 1, max: 20, step: 1, unit: "cells" },
+    { k: "det_cfar_bias_db", label: "CFAR bias", type: "num", min: -20, max: 40, step: 0.5, unit: "dB" },
+    { k: "det_min_range_m", label: "Min. range", type: "num", min: 0, max: 20, step: 0.01, unit: "m" },
+    { k: "det_max_range_m", label: "Max. range", type: "num", min: 0, max: 20, step: 0.01, unit: "m" },
+    { k: "det_min_doppler_bin", label: "Min. Doppler bin", type: "num", min: 0, max: 63, step: 1 },
+    { k: "det_max_doppler_bin", label: "Max. Doppler bin", type: "num", min: 0, max: 63, step: 1 },
+    { k: "det_exclude_dc_bins", label: "Exclude DC bins", type: "num", min: 0, max: 20, step: 1, hint: "0 = off; 1 = zero bin only; 2 = ±2 bins." },
+    { k: "det_min_peak_distance", label: "Min. peak distance", type: "num", min: 0, max: 20, step: 1, unit: "cells" },
+    { k: "det_max_peaks", label: "Max. peaks", type: "num", min: 1, max: 100, step: 1 },
+    { k: "det_min_power_db", label: "Min. level", type: "num", min: -200, max: 200, step: 0.5, unit: "dB" },
+    { k: "det_show_threshold", label: "Draw threshold in profile", type: "bool" },
+  ]},
+  { panel: "det", title: "Tracking / target", items: [
+    { k: "det_target_hold_s", label: "Target hold time", type: "num", min: 0, max: 120, step: 0.5, unit: "s", hint: "How long a target stays visible after its last update." },
+    { k: "det_association_m", label: "Association radius", type: "num", min: 0, max: 20, step: 0.05, unit: "m", hint: "Maximum jump allowed when associating with the previous target." },
+    { k: "det_smoothing", label: "Target smoothing", type: "num", min: 0, max: 0.99, step: 0.01, hint: "0 = raw, 0.8 = heavily damped." },
+  ]},
+  { panel: "vital", title: "Vitals", items: [
+    { k: "dsp_vital_history_s", label: "History duration", type: "num", min: 5, max: 900, step: 5, unit: "s" },
+    { k: "dsp_vital_smooth", label: "Smoothing", type: "num", min: 0, max: 0.99, step: 0.01 },
+    { k: "dsp_vital_fft_enabled", label: "Local FFT in dashboard", type: "bool", hint: "Also computes breath/heart rate from the phase history." },
+    { k: "dsp_vital_fft_window_s", label: "FFT window", type: "num", min: 3, max: 300, step: 1, unit: "s" },
+    { k: "dsp_vital_fft_n", label: "FFT size", type: "num", min: 128, max: 8192, step: 128 },
+    { k: "dsp_vital_breath_low_hz", label: "Breath band low", type: "num", min: 0.01, max: 2, step: 0.01, unit: "Hz" },
+    { k: "dsp_vital_breath_high_hz", label: "Breath band high", type: "num", min: 0.02, max: 3, step: 0.01, unit: "Hz" },
+    { k: "dsp_vital_heart_low_hz", label: "Heart band low", type: "num", min: 0.2, max: 4, step: 0.05, unit: "Hz" },
+    { k: "dsp_vital_heart_high_hz", label: "Heart band high", type: "num", min: 0.3, max: 5, step: 0.05, unit: "Hz" },
+    { k: "dsp_phase_unwrap", label: "Unwrap phase", type: "bool" },
+  ]},
+  { panel: "ui", title: "Visibility", items: [
+    { k: "ui_theme", label: "Theme", type: "sel", options: [["dark", "Dark"], ["light", "Light"]] },
+    { k: "ui_show_rx1", label: "RX1 heatmap", type: "bool" },
+    { k: "ui_show_rx2", label: "RX2 heatmap", type: "bool" },
+    { k: "ui_show_range", label: "Range profile", type: "bool" },
+    { k: "ui_show_doppler", label: "Doppler profile", type: "bool" },
+    { k: "ui_show_waterfall", label: "Waterfall", type: "bool" },
+    { k: "ui_show_map", label: "Room map", type: "bool" },
+    { k: "ui_show_fusion", label: "Multispectrum (fusion/motion/SNR)", type: "bool" },
+    { k: "ui_show_rti", label: "Range-time (RTI)", type: "bool" },
+    { k: "ui_show_3d", label: "3D surface", type: "bool" },
+    { k: "ui_show_vitals", label: "Vitals", type: "bool" },
+    { k: "ui_show_detections", label: "Detection table", type: "bool" },
+    { k: "ui_show_target", label: "Target marker", type: "bool" },
+    { k: "ui_show_trail", label: "Target trail", type: "bool" },
+  ]},
+  { panel: "ui", title: "Map / view", items: [
+    { k: "ui_map_size_m", label: "Map size", type: "num", min: 0.5, max: 30, step: 0.1, unit: "m" },
+    { k: "ui_auto_map_size", label: "Auto-scale map", type: "bool" },
+    { k: "ui_point_age_s", label: "Point age", type: "num", min: 1, max: 3600, step: 1, unit: "s", hint: "Points older than this value are hidden." },
+    { k: "ui_max_points", label: "Max. points", type: "num", min: 50, max: 50000, step: 50 },
+    { k: "ui_trail_length", label: "Trail length", type: "num", min: 2, max: 5000, step: 1 },
+    { k: "ui_view_min_m", label: "View min", type: "num", min: 0, max: 20, step: 0.01, unit: "m" },
+    { k: "ui_view_max_m", label: "View max", type: "num", min: 0, max: 20, step: 0.01, unit: "m" },
+  ]},
+  { panel: "auto", title: "Automation", items: [
+    { k: "auto_enabled", label: "Auto mode enabled", type: "bool" },
+    { k: "auto_contrast", label: "Auto contrast", type: "bool" },
+    { k: "auto_threshold", label: "Auto threshold", type: "bool", hint: "Adjusts the detection threshold based on the peak count." },
+    { k: "auto_view", label: "Auto view range", type: "bool" },
+    { k: "auto_view_span_m", label: "Auto window width", type: "num", min: 0.1, max: 20, step: 0.1, unit: "m" },
+    { k: "auto_map_size", label: "Auto map size", type: "bool" },
+    { k: "auto_peak_target", label: "Raw peak as fallback target", type: "bool", hint: "If the radar provides no x/y target, the strongest range peak is placed on the map." },
+    { k: "auto_gain", label: "Auto gain", type: "bool", hint: "Adjusts display gain toward a target level; replaces auto contrast." },
+    { k: "auto_gain_target_db", label: "Auto-gain target level", type: "num", min: -100, max: 150, step: 0.5, unit: "dB" },
+  ]},
+  { panel: "auto", title: "Auto mode switching / recording", items: [
+    { k: "auto_mode_switch", label: "Automatically switch raw/track", type: "bool", hint: "Serial connection only. Presence enables raw mode; absence returns to track mode." },
+    { k: "auto_raw_hold_s", label: "Hold raw after presence", type: "num", min: 0, max: 60, step: 0.5, unit: "s" },
+    { k: "auto_track_after_s", label: "Track after absence", type: "num", min: 0, max: 300, step: 0.5, unit: "s" },
+    { k: "auto_presence_source", label: "Presence source", type: "sel", options: [["either", "Radar or raw data"], ["radar", "Radar only"], ["raw", "Raw data only"]] },
+    { k: "auto_motion_threshold_db", label: "Motion threshold", type: "num", min: 0, max: 30, step: 0.1, unit: "dB", hint: "Mean image change per frame above which raw data counts as motion." },
+    { k: "auto_record", label: "Record automatically", type: "bool" },
+    { k: "auto_record_post_s", label: "Recording post-roll", type: "num", min: 0, max: 300, step: 0.5, unit: "s" },
+  ]},
+  { panel: "rec", title: "Recording", items: [
+    { k: "rec_path", label: "Target file", type: "text", hint: "Relative to the project directory. Existing files are never overwritten." },
+    { k: "rec_max_frames", label: "Max. frames", type: "num", min: 0, max: 500000, step: 100, hint: "0 = unlimited (careful: RAM)." },
+    { k: "rec_include_detections", label: "Record detections", type: "bool" },
+  ]},
+  { panel: "fw", title: "Firmware patch parameters", items: [
+    { k: "fw_rows", label: "Range window", type: "sel", options: [["8", "8 rows (1.0 m, approx. 41 kB/s)"], ["16", "16 rows (2.0 m, approx. 81 kB/s)"], ["32", "32 rows (4.0 m, approx. 161 kB/s – UART limit!)"]] },
+    { k: "fw_tia", label: "TIA gain", type: "sel", options: [["6", "6 dB (default)"], ["12", "12 dB"], ["18", "18 dB"]] },
+    { k: "fw_vga", label: "VGA gain", type: "sel", options: [["15", "15 dB (default)"], ["18", "18 dB"], ["20", "20 dB"]] },
+    { k: "fw_pa", label: "PA bias", type: "sel", options: [["10", "10 (default)"], ["12", "12"], ["15", "15"]] },
+    { k: "fw_hpf", label: "High-pass", type: "sel", options: [["150", "150 kHz (default)"], ["400", "400 kHz"]] },
+    { k: "fw_allow_rf", label: "Explicitly allow RF patches", type: "bool", hint: "TIA/VGA/PA/HPF are untested. Only after a deliberate decision." },
+    { k: "fw_allow_unsafe", label: "Allow unsafe 32-row rate", type: "bool", hint: "32 rows overload the UART at ~20 Hz." },
+    { k: "fw_out_dir", label: "Output folder", type: "text" },
+  ]},
+];
+
+const controls = {};
+const LIMITS = {};
+
+function buildControls() {
+  for (const group of SCHEMA) {
+    const mount = $(`[data-gen="${group.panel}"]`);
+    if (!mount) continue;
+    const g = document.createElement("div");
+    g.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = group.title;
+    g.appendChild(h);
+    for (const f of group.items) {
+      g.appendChild(buildField(f));
+      LIMITS[f.k] = { min: f.min, max: f.max, step: f.step };
+    }
+    mount.appendChild(g);
+  }
+}
+
+function buildField(f) {
+  const wrap = document.createElement("div");
+  wrap.className = "ctl";
+  wrap.dataset.key = f.k;
+  const lbl = document.createElement("label");
+  lbl.className = "lbl";
+  lbl.innerHTML = `<span>${esc(f.label)}</span>${f.unit ? `<span class="u">${esc(f.unit)}</span>` : ""}`;
+  wrap.appendChild(lbl);
+
+  if (f.type === "bool") {
+    const lab = document.createElement("label");
+    lab.className = "check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.onchange = () => setConfig({ [f.k]: cb.checked }, true);
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode("enabled"));
+    wrap.appendChild(lab);
+    controls[f.k] = { set: v => { cb.checked = !!v; } };
+  } else if (f.type === "sel") {
+    const sel = document.createElement("select");
+    for (const [val, text] of f.options) {
+      const o = document.createElement("option");
+      o.value = val; o.textContent = text;
+      sel.appendChild(o);
+    }
+    sel.onchange = () => setConfig({ [f.k]: sel.value }, true);
+    wrap.appendChild(sel);
+    controls[f.k] = { set: v => { sel.value = String(v); } };
+  } else if (f.type === "text") {
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.onchange = () => setConfig({ [f.k]: inp.value }, true);
+    inp.onkeydown = e => { if (e.key === "Enter") inp.blur(); };
+    wrap.appendChild(inp);
+    controls[f.k] = { set: v => { if (document.activeElement !== inp) inp.value = v ?? ""; } };
+  } else {
+    const row = document.createElement("div");
+    row.className = "row";
+    const range = document.createElement("input");
+    range.type = "range";
+    range.min = f.min; range.max = f.max; range.step = f.step ?? 1;
+    const number = document.createElement("input");
+    number.type = "number";
+    number.min = f.min; number.max = f.max; number.step = f.step ?? 1;
+    let timer = null;
+    const push = (v, immediate) => {
+      number.value = v;
+      range.value = v;
+      setConfig({ [f.k]: Number(v) }, immediate);
+    };
+    range.oninput = () => { number.value = range.value; clearTimeout(timer); timer = setTimeout(() => setConfig({ [f.k]: Number(range.value) }), 120); };
+    range.onchange = () => { clearTimeout(timer); push(range.value, true); };
+    number.onchange = () => { clearTimeout(timer); push(number.value, true); };
+    number.onkeydown = e => { if (e.key === "Enter") number.blur(); };
+    row.appendChild(range); row.appendChild(number);
+    wrap.appendChild(row);
+    controls[f.k] = { set: v => {
+      if (document.activeElement === number || document.activeElement === range) return;
+      const nv = Number(v);
+      number.value = Number.isFinite(nv) ? nv : "";
+      range.value = Number.isFinite(nv) ? nv : f.min;
+    }};
+  }
+  if (f.hint) {
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = f.hint;
+    wrap.appendChild(hint);
+  }
+  return wrap;
+}
+
+function applyConfig(cfg, force = false) {
+  if (!cfg) return;
+  const now = Date.now();
+  for (const [k, v] of Object.entries(cfg)) {
+    if (!force && state.pending[k] && now - state.pending[k] < 1200) continue;
+    if (controls[k]) controls[k].set(v);
+  }
+  state.config = { ...state.config, ...cfg };
+  applyTheme();
+  applyVisibility();
+  if (state.snap) renderCurrent();
+}
+
+function applyTheme() {
+  const light = state.config.ui_theme === "light";
+  document.body.classList.toggle("light", light);
+  document.documentElement.dataset.theme = light ? "light" : "dark";
+}
+
+function applyVisibility() {
+  for (const el of $$("[data-show]")) {
+    const key = el.dataset.show;
+    const show = state.config[key] !== false;
+    el.classList.toggle("cfg-hidden", !show);
+  }
+}
+
+function setConfig(updates, immediate = false) {
+  const now = Date.now();
+  for (const [k, v] of Object.entries(updates)) {
+    state.config[k] = v;
+    state.configQueue[k] = v;
+    state.pending[k] = now;
+  }
+  applyTheme();
+  applyVisibility();
+  if (immediate) flushConfig();
+  else {
+    clearTimeout(state.cfgTimer);
+    state.cfgTimer = setTimeout(flushConfig, 140);
+  }
+}
+
+async function flushConfig() {
+  const updates = state.configQueue;
+  state.configQueue = {};
+  if (!Object.keys(updates).length) return;
+  try {
+    const data = await api("/api/config", { updates });
+    if (data.config) applyConfig(data.config);
+  } catch (e) {
+    toast("Parameter: " + e.message, "err");
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* State / files / logs                                               */
+/* ------------------------------------------------------------------ */
+async function refreshState() {
+  try {
+    const s = await api("/api/state");
+    state.defaults = s.defaults || {};
+    state.presets = s.presets || {};
+    state.files = s.recordings || [];
+    state.lastPatch = s.last_patch || null;
+    if (!state.configLoaded) {
+      state.configLoaded = true;
+      state.config = { ...(s.defaults || {}), ...(s.config || {}) };
+      applyConfig(state.config, true);
+    }
+    mergeLogs(s.logs || []);
+    if (s.connection) updateHeaderFromStats(s.connection, s.source);
+    renderPresets();
+    renderFiles();
+    renderPatch();
+  } catch (e) {
+    // Server may still be starting; stay quiet.
+  }
+}
+
+function mergeLogs(entries) {
+  if (!entries || !entries.length) return;
+  const map = new Map(state.logs.map(l => [l.seq, l]));
+  for (const e of entries) map.set(e.seq, e);
+  state.logs = Array.from(map.values()).sort((a, b) => a.seq - b.seq).slice(-2500);
+  renderLogBar();
+  if (state.view === "log") renderFullLog();
+}
+
+function renderPresets() {
+  const sel = $("#presetSelect");
+  if (!sel || sel.dataset.ready === "1") return;
+  sel.innerHTML = "";
+  for (const [key, p] of Object.entries(state.presets || {})) {
+    const o = document.createElement("option");
+    o.value = key; o.textContent = p.label || key;
+    sel.appendChild(o);
+  }
+  sel.dataset.ready = "1";
+}
+
+/* ------------------------------------------------------------------ */
+/* SSE                                                                */
+/* ------------------------------------------------------------------ */
+function connectSSE() {
+  if (state.es) state.es.close();
+  const es = new EventSource("/api/stream");
+  state.es = es;
+  es.onmessage = ev => {
+    try { onSnapshot(JSON.parse(ev.data)); }
+    catch (e) { console.warn("Snapshot parse", e); }
+  };
+  es.onerror = () => { /* EventSource reconnects automatically */ };
+}
+
+function onSnapshot(snap) {
+  state.snap = snap;
+  state.lastSnapAt = performance.now();
+  state.connected = !!(snap.conn && snap.conn.connected);
+  if (snap.config) {
+    state.configLoaded = true;
+    applyConfig(snap.config);
+  }
+  if (snap.logs) mergeLogs(snap.logs);
+  pushWaterfall(snap);
+  pushRTI(snap);
+  pushPhase(snap);
+  pushTrail(snap);
+  updateHeader(snap);
+  updateLogBarInfo();
+  renderCurrent();
+}
+
+function pushWaterfall(snap) {
+  if (!snap.raw || !snap.raw.ok || !snap.raw.waterfall) return;
+  const row = snap.raw.waterfall.db;
+  if (!Array.isArray(row)) return;
+  if (state.wfCols !== row.length) { state.wf = []; state.wfCols = row.length; }
+  state.wf.push(row);
+  const max = Math.max(20, Math.min(1000, Number(state.config.dsp_waterfall_rows) || 200));
+  while (state.wf.length > max + 4) state.wf.shift();
+}
+
+function pushRTI(snap) {
+  const p = snap.raw && snap.raw.ok && snap.raw.profiles && snap.raw.profiles.range_combined;
+  if (!Array.isArray(p) || !p.length) return;
+  const last = state.rti[state.rti.length - 1];
+  if (last && snap.t - last.t < 0.08) return;  // cap at ~12 Hz
+  state.rti.push({ t: snap.t, v: p.slice() });
+  const max = 240;
+  while (state.rti.length > max) state.rti.shift();
+}
+
+function pushPhase(snap) {
+  const p = snap.vitals && snap.vitals.phase;
+  if (!p || p.total === null || p.total === undefined) return;
+  if (snap.vitals.seq === state.lastVitalSeq) return;
+  state.lastVitalSeq = snap.vitals.seq;
+  state.phaseHist.push({ t: snap.t, total: +p.total, breath: +p.breath, heart: +p.heart });
+  const cutoff = snap.t - (Number(state.config.dsp_vital_history_s) || 120);
+  while (state.phaseHist.length > 2 && state.phaseHist[0].t < cutoff) state.phaseHist.shift();
+}
+
+function pushTrail(snap) {
+  let t = snap.target;
+  if (!t || t.x === null || t.x === undefined || (t.age_s || 0) > 2.0) t = snap.pseudo_target;
+  if (!t || t.x === null || t.x === undefined || t.y === null || t.y === undefined) return;
+  const last = state.trail[state.trail.length - 1];
+  if (!last || Math.hypot(t.x - last.x, t.y - last.y) > 0.01 || (snap.t - last.t) > 0.5) {
+    state.trail.push({ x: +t.x, y: +t.y, t: snap.t });
+    const max = Math.max(2, Math.min(5000, Number(state.config.ui_trail_length) || 300));
+    while (state.trail.length > max) state.trail.shift();
+  }
+  while (state.trail.length > 2 && snap.t - state.trail[0].t > 60) state.trail.shift();
+}
+
+/* ------------------------------------------------------------------ */
+/* Header / logs                                                      */
+/* ------------------------------------------------------------------ */
+function updateHeaderFromStats(st, source) {
+  if (source) $("#pillSource").textContent = "Source " + source;
+  setPill("pillConn", st.connected ? "on" : "off", st.connected ? (st.port || "connected") : "Disconnected");
+  setPill("pillMode", "", "Mode " + (st.mode || "–"));
+  setPill("pillVersion", "", "FW " + (st.version || "–"));
+  setPill("pillRate", "", num(st.frames_per_s, 1) + " Hz");
+  setPill("pillBytes", "", fmtBytes(st.bytes_per_s) + "/s");
+}
+
+function setPill(id, cls, text) {
+  const el = $("#" + id);
+  if (!el) return;
+  el.classList.remove("on", "off", "warn", "rec");
+  if (cls) el.classList.add(cls);
+  const dot = el.querySelector("i");
+  el.textContent = text;
+  if (dot) el.prepend(dot);
+}
+
+function updateHeader(snap) {
+  const c = snap.conn || {};
+  const st = snap.stats || {};
+  setPill("pillSource", "", "Source " + (snap.source || "–"));
+  setPill("pillConn", c.connected ? "on" : "off", c.connected ? (c.port || "connected") : "Disconnected");
+  setPill("pillMode", "", "Mode " + (c.mode || "–"));
+  setPill("pillVersion", "", "FW " + (c.version || "–"));
+  setPill("pillRate", "", num(st.frames_per_s, 1) + " Hz");
+  setPill("pillBytes", "", fmtBytes(st.bytes_per_s) + "/s");
+  const rec = snap.rec && snap.rec.recording;
+  setPill("pillRec", rec ? "rec" : "off", rec ? `REC ${snap.rec.frames} F` : "REC off");
+  const auto = snap.auto && snap.auto.enabled;
+  setPill("pillAuto", auto ? "on" : "off", auto ? "AUTO on" : "AUTO off");
+  $("#btnAuto").classList.toggle("active", !!auto);
+  $("#btnConnect").textContent = c.connected ? "Disconnect" : "Connect";
+  const ci = $("#connInfo");
+  if (ci) ci.textContent = `${c.port || "–"} · ${c.connected ? "connected" : "disconnected"} · ${c.mode || "–"} · FW ${c.version || "–"}`;
+  const ai = $("#autoInfo");
+  if (ai && snap.auto) {
+    const a = snap.auto;
+    ai.textContent = `${a.enabled ? "active" : "off"} · Contrast ${a.contrast ? `${num(a.contrast.lo, 1)}…${num(a.contrast.hi, 1)} dB` : "–"} · Gain ${num(a.gain_db, 1)} dB · View ${num(a.view?.min_m, 2)}…${num(a.view?.max_m, 2)} m · Map ${num(a.map_size_m, 2)} m · Presence ${a.presence ? "yes" : "no"} (${a.presence_source || "–"})`;
+  }
+  const ri = $("#recInfo");
+  if (ri) ri.textContent = snap.rec ? `${snap.rec.recording ? "running" : "off"} · ${snap.rec.frames} frames · ${num(snap.rec.seconds, 0)} s · max ${snap.rec.max_frames || "∞"}` : "–";
+  const rv = $("#recViewMeta");
+  if (rv && snap.rec) rv.textContent = snap.rec.recording ? `running · ${snap.rec.frames} frames` : "off";
+}
+
+function updateLogBarInfo() {
+  const el = $("#logbarInfo");
+  if (el) el.textContent = `${state.logs.length} entries`;
+  const li = $("#logInfo");
+  if (li) li.textContent = `${state.logs.length} entries buffered`;
+}
+
+function renderLogBar() {
+  const box = $("#logbarRows");
+  if (!box) return;
+  const rows = state.logs.slice(-8);
+  box.innerHTML = rows.map(logRowHtml).join("") || `<div class="empty">No log entries yet.</div>`;
+  if (state.logAutoScroll) box.scrollTop = box.scrollHeight;
+}
+
+function logRowHtml(l) {
+  return `<div class="log-row ${esc(l.level)}"><span class="t">${timeStr(l.t)}</span><span class="lv">${esc(l.level)}</span><span class="msg">${esc(l.msg)}</span></div>`;
+}
+
+function renderFullLog() {
+  const box = $("#logView");
+  if (!box) return;
+  const rows = state.logs;
+  box.innerHTML = rows.map(logRowHtml).join("") || `<div class="empty">No log entries yet.</div>`;
+  const info = $("#logViewInfo");
+  if (info) info.textContent = `${rows.length} entries`;
+  if (state.logAutoScroll) box.scrollTop = box.scrollHeight;
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawing: series                                                    */
+/* ------------------------------------------------------------------ */
+function drawSeries(canvas, series, opts = {}) {
+  const { ctx, w, h } = setupCanvas(canvas);
+  const tc = themeColors();
+  const padL = opts.padL ?? 46, padR = 10, padT = 20, padB = 24;
+  const cw = w - padL - padR, ch = h - padT - padB;
+  const xs = opts.x || [];
+  const n = Math.min(xs.length, ...series.map(s => s.values.length));
+  if (!n || cw < 10 || ch < 10) { clearCanvas(canvas, "No data"); return; }
+  const xMin = opts.xMin ?? Math.min(...xs.slice(0, n));
+  const xMax = opts.xMax ?? Math.max(...xs.slice(0, n));
+  let all = [];
+  for (const s of series) for (let i = 0; i < n; i++) if (Number.isFinite(s.values[i])) all.push(s.values[i]);
+  if (!all.length) { clearCanvas(canvas, "No data"); return; }
+  let yMin = opts.yMin ?? Math.min(...all);
+  let yMax = opts.yMax ?? Math.max(...all);
+  if (!(yMax > yMin)) yMax = yMin + 1;
+  const yPad = (yMax - yMin) * (opts.yPad ?? 0.08);
+  yMin -= yPad; yMax += yPad;
+  const X = v => padL + ((v - xMin) / (xMax - xMin || 1)) * cw;
+  const Y = v => padT + ch - ((v - yMin) / (yMax - yMin || 1)) * ch;
+
+  // Bands
+  for (const b of opts.bands || []) {
+    const x0 = X(Math.max(b.from, xMin)), x1 = X(Math.min(b.to, xMax));
+    if (x1 > x0) {
+      ctx.fillStyle = b.color || "rgba(76,201,240,.08)";
+      ctx.fillRect(x0, padT, x1 - x0, ch);
+      if (b.label) {
+        ctx.fillStyle = tc.dim; ctx.font = "9px " + getComputedStyle(document.body).getPropertyValue("--mono");
+        ctx.fillText(b.label, x0 + 3, padT + 10);
+      }
+    }
+  }
+  // Grid
+  ctx.strokeStyle = tc.grid; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (ch * i) / 4;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + cw, y); ctx.stroke();
+  }
+  for (let i = 0; i <= 4; i++) {
+    const x = padL + (cw * i) / 4;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + ch); ctx.stroke();
+  }
+  // Threshold line
+  if (opts.hline !== null && opts.hline !== undefined && Number.isFinite(opts.hline)) {
+    const y = Y(opts.hline);
+    if (y >= padT && y <= padT + ch) {
+      ctx.strokeStyle = "rgba(255,209,102,.55)"; ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + cw, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(255,209,102,.85)"; ctx.font = "9px " + getComputedStyle(document.body).getPropertyValue("--mono");
+      ctx.fillText((opts.hlineLabel || "Threshold") + " " + num(opts.hline, 1) + " dB", padL + 4, y - 3);
+    }
+  }
+  // Vertical lines
+  for (const v of opts.vlines || []) {
+    if (v < xMin || v > xMax) continue;
+    const x = X(v);
+    ctx.strokeStyle = "rgba(255,255,255,.22)"; ctx.setLineDash([3, 4]);
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + ch); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // Series
+  for (const s of series) {
+    ctx.strokeStyle = s.color || tc.text; ctx.lineWidth = s.width ?? 1.5;
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < n; i++) {
+      const v = s.values[i];
+      if (!Number.isFinite(v)) { started = false; continue; }
+      const x = X(xs[i]), y = Y(v);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Last point
+    for (let i = n - 1; i >= 0; i--) {
+      if (Number.isFinite(s.values[i])) {
+        ctx.fillStyle = s.color || tc.text;
+        ctx.beginPath(); ctx.arc(X(xs[i]), Y(s.values[i]), 2.2, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+    }
+  }
+  // Axes
+  ctx.strokeStyle = tc.axis; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + ch); ctx.lineTo(padL + cw, padT + ch); ctx.stroke();
+  ctx.fillStyle = tc.text; ctx.font = "9.5px " + getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++) {
+    const v = yMax - ((yMax - yMin) * i) / 4;
+    ctx.fillText(opts.yFmt ? opts.yFmt(v) : num(v, 1), padL - 5, padT + (ch * i) / 4);
+  }
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let i = 0; i <= 4; i++) {
+    const v = xMin + ((xMax - xMin) * i) / 4;
+    ctx.fillText(opts.xFmt ? opts.xFmt(v) : num(v, 2), padL + (cw * i) / 4, padT + ch + 4);
+  }
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  if (opts.xLabel) {
+    ctx.fillStyle = tc.dim; ctx.textAlign = "right";
+    ctx.fillText(opts.xLabel, padL + cw, h - 2);
+    ctx.textAlign = "left";
+  }
+  if (opts.yLabel) {
+    ctx.fillStyle = tc.dim;
+    ctx.fillText(opts.yLabel, 3, padT + 8);
+  }
+  drawLegend(ctx, padL + 2, 11, series.map(s => ({ label: s.label || "", color: s.color || tc.text })));
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawing: heatmap                                                   */
+/* ------------------------------------------------------------------ */
+function viewRowRange(raw, rows) {
+  const range = raw.range_m || [];
+  const view = raw.view || { min_m: -Infinity, max_m: Infinity };
+  let r0 = 0, r1 = rows - 1;
+  for (let i = 0; i < rows; i++) if (range[i] >= view.min_m) { r0 = i; break; }
+  for (let i = rows - 1; i >= 0; i--) if (range[i] <= view.max_m) { r1 = i; break; }
+  if (r1 < r0) { r0 = 0; r1 = rows - 1; }
+  return { r0, r1 };
+}
+
+function makeToneMapper(values, lo, hi, cfg) {
+  const gamma = clamp(Number(cfg.dsp_heat_gamma) || 1, 0.2, 4);
+  const span = (hi - lo) || 1;
+  let cdf = null;
+  if (cfg.dsp_heat_equalize && values.length) {
+    const N = 256;
+    const hist = new Uint32Array(N);
+    for (const v of values) {
+      const t = clamp((Number(v) - lo) / span, 0, 1);
+      hist[Math.min(N - 1, Math.floor(t * N))]++;
+    }
+    cdf = new Float32Array(N);
+    let acc = 0;
+    for (let i = 0; i < N; i++) { acc += hist[i]; cdf[i] = acc; }
+    const total = acc || 1;
+    for (let i = 0; i < N; i++) cdf[i] = cdf[i] / total;
+  }
+  return (v) => {
+    let t = clamp((Number(v) - lo) / span, 0, 1);
+    if (cdf) t = cdf[Math.min(255, Math.floor(t * 256))] || t;
+    return Math.pow(t, 1 / gamma);
+  };
+}
+
+function applyPersistence(key, norm, cfg) {
+  const p = clamp(Number(cfg.dsp_persistence) || 0, 0, 0.95);
+  if (p <= 0) { delete state.persist[key]; return norm; }
+  const rec = state.persist[key];
+  if (!rec || rec.length !== norm.length) {
+    state.persist[key] = norm.slice();
+    return norm;
+  }
+  for (let i = 0; i < rec.length; i++) {
+    const v = rec[i] * p;
+    rec[i] = norm[i] > v ? norm[i] : v;
+  }
+  return rec;
+}
+
+function heatChrome(ctx, raw, cfg, big, g) {
+  const tc = themeColors();
+  const mono = getComputedStyle(document.body).getPropertyValue("--mono");
+  if (cfg.dsp_show_grid) {
+    ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const x = g.padL + (g.cw * i) / 4;
+      ctx.beginPath(); ctx.moveTo(x, g.padT); ctx.lineTo(x, g.padT + g.ch); ctx.stroke();
+    }
+    for (let i = 1; i < 4; i++) {
+      const y = g.padT + (g.ch * i) / 4;
+      ctx.beginPath(); ctx.moveTo(g.padL, y); ctx.lineTo(g.padL + g.cw, y); ctx.stroke();
+    }
+  }
+  ctx.fillStyle = tc.text;
+  ctx.font = (big ? "11px " : "9.5px ") + mono;
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText(num(raw.range_m[g.r0], 2) + " m", g.padL + 3, g.padT + 3);
+  ctx.textBaseline = "bottom";
+  ctx.fillText(num(raw.range_m[g.r1], 2) + " m", g.padL + 3, g.padT + g.ch - 2);
+  ctx.textBaseline = "top";
+  const dm = raw.doppler_mps || [];
+  ctx.textAlign = "left"; ctx.fillText(num(dm[0], 2) + " m/s", g.padL, g.padT + g.ch + 3);
+  ctx.textAlign = "center"; ctx.fillText("0", g.padL + g.cw / 2, g.padT + g.ch + 3);
+  ctx.textAlign = "right"; ctx.fillText(num(dm[colsLast(dm)], 2), g.padL + g.cw, g.padT + g.ch + 3);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+}
+
+function colsLast(arr) { return arr.length ? arr.length - 1 : 0; }
+
+function drawDetectionOverlay(ctx, raw, source, g, cfg, big) {
+  if (!cfg.dsp_det_overlay) return;
+  const dets = raw.detections || [];
+  if (!dets.length) return;
+  const mono = getComputedStyle(document.body).getPropertyValue("--mono");
+  let labelled = 0;
+  for (const d of dets) {
+    const ch = String(d.channel || "");
+    if (source === "rx1" && !(ch === "rx1" || ch === "mean" || ch === "max")) continue;
+    if (source === "rx2" && !(ch === "rx2" || ch === "mean" || ch === "max")) continue;
+    const row = Number(d.row), col = Number(d.col);
+    if (!Number.isFinite(row) || !Number.isFinite(col)) continue;
+    if (row < g.r0 || row > g.r1 || col < 0 || col >= g.cols) continue;
+    const x = g.padL + ((col + 0.5) / g.cols) * g.cw;
+    const y = g.padT + ((row - g.r0 + 0.5) / g.rowsView) * g.ch;
+    ctx.strokeStyle = "rgba(255,255,255,.92)"; ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.arc(x, y, big ? 5.5 : 4.0, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = "rgba(255,93,115,.95)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, big ? 8.5 : 6.0, 0, Math.PI * 2); ctx.stroke();
+    if (big && labelled < 5) {
+      // Label only the strongest peaks, offset to avoid overlap
+      const label = `${num(d.range_m, 2)} m · ${num(d.velocity_mps, 2)} m/s · SNR ${num(d.snr_db, 1)} dB`;
+      ctx.font = "9px " + mono;
+      ctx.textBaseline = "bottom";
+      const tw = ctx.measureText(label).width;
+      const right = x + 9 + tw > g.padL + g.cw;
+      const dy = labelled % 2 === 0 ? -3 : -16;
+      const bx = right ? x - 9 - tw : x + 9;
+      ctx.fillStyle = "rgba(9,15,22,.58)";
+      ctx.fillRect(bx - 2, y + dy - 10, tw + 4, 12);
+      ctx.fillStyle = "rgba(255,255,255,.92)";
+      ctx.textAlign = right ? "right" : "left";
+      ctx.fillText(label, right ? x - 9 : x + 9, y + dy);
+      labelled++;
+    }
+  }
+}
+
+function drawPeakMarker(ctx, g, peak, cfg) {
+  if (!cfg.dsp_peak_overlay || !peak || peak.r < 0) return;
+  if (peak.r < g.r0 || peak.r > g.r1) return;
+  const x = g.padL + ((peak.c + 0.5) / g.cols) * g.cw;
+  const y = g.padT + ((peak.r - g.r0 + 0.5) / g.rowsView) * g.ch;
+  ctx.strokeStyle = "rgba(255,209,102,.95)"; ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 6); ctx.lineTo(x + 6, y); ctx.lineTo(x, y + 6); ctx.lineTo(x - 6, y);
+  ctx.closePath(); ctx.stroke();
+}
+
+function renderHeatMatrix(canvas, m, color, cfg, big, opts = {}) {
+  if (!m || !m.length || !m[0]) { clearCanvas(canvas, "No data"); return; }
+  const rows = m.length, cols = m[0].length;
+  const raw = opts.raw || {};
+  const { r0, r1 } = viewRowRange(raw, rows);
+  const rowsView = r1 - r0 + 1;
+  const { ctx, w, h } = setupCanvas(canvas);
+  const padL = 5, padR = 5, padT = 5, padB = 18;
+  const cw = Math.max(10, w - padL - padR), ch = Math.max(10, h - padT - padB);
+  const vals = [];
+  for (let r = r0; r <= r1; r++) for (let col = 0; col < cols; col++) vals.push(Number(m[r][col]));
+  let lo = Number(color.lo), hi = Number(color.hi);
+  if (!(hi > lo)) {
+    const sorted = vals.slice().sort((a, b) => a - b);
+    lo = sorted[Math.floor(sorted.length * 0.01)] ?? 0;
+    hi = sorted[Math.max(0, Math.floor(sorted.length * 0.99) - 1)] ?? (lo + 1);
+    if (!(hi > lo)) hi = lo + 1;
+  }
+  const tone = makeToneMapper(vals, lo, hi, cfg);
+  const cmap = color.cmap || cfg.dsp_colormap || "magma";
+  const unit = color.unit || "dB";
+  const norm = new Float32Array(rowsView * cols);
+  let peak = { v: -Infinity, r: -1, c: -1 };
+  for (let r = 0; r < rowsView; r++) {
+    const src = m[r0 + r];
+    for (let col = 0; col < cols; col++) {
+      const v = Number(src[col]);
+      norm[r * cols + col] = tone(v);
+      if (v > peak.v) peak = { v, r: r0 + r, c: col };
+    }
+  }
+  const shown = applyPersistence(opts.key || "heat", norm, cfg);
+  const off = document.createElement("canvas");
+  off.width = cols; off.height = rowsView;
+  const octx = off.getContext("2d");
+  const img = octx.createImageData(cols, rowsView);
+  for (let i = 0; i < shown.length; i++) {
+    const [rr, gg, bb] = colorAt(cmap, shown[i]);
+    const idx = i * 4;
+    img.data[idx] = rr; img.data[idx + 1] = gg; img.data[idx + 2] = bb; img.data[idx + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = !!cfg.dsp_interp;
+  ctx.drawImage(off, padL, padT, cw, ch);
+  const g = { padL, padT, cw, ch, r0, r1, rowsView, cols };
+  heatChrome(ctx, raw, cfg, big, g);
+  if (opts.detections !== false) drawDetectionOverlay(ctx, raw, opts.source || "combined", g, cfg, big);
+  drawPeakMarker(ctx, g, peak, cfg);
+  drawColorBar(ctx, padL + cw - 8, padT + 4, 6, Math.min(60, ch * 0.5), cmap, lo, hi, unit, big);
+  canvas._heatGeom = { ...g, matrix: m, raw, unit, cmap, label: opts.label || "" };
+}
+
+function drawHeat(canvas, raw, source, cfg, big = false) {
+  if (!raw || !raw.ok) { clearCanvas(canvas, "No raw data"); return; }
+  const obj = raw[source];
+  if (!obj || !obj.m || !obj.m.length) { clearCanvas(canvas, "No channel"); return; }
+  const c = raw.heat_color || { lo: -10, hi: 60, cmap: cfg.dsp_colormap || "magma", unit: "dB" };
+  renderHeatMatrix(canvas, obj.m, c, cfg, big, {
+    key: `${source}${big ? "_big" : ""}`, raw, source, detections: true,
+    label: source === "rx1" ? "RX1" : source === "rx2" ? "RX2" : "RX1 + RX2",
+  });
+}
+
+function specialRange(m, raw, mode) {
+  const { r0, r1 } = viewRowRange(raw, m.length);
+  const vals = [];
+  for (let r = r0; r <= r1; r++) for (const v of m[r]) vals.push(Math.abs(Number(v)));
+  vals.sort((a, b) => a - b);
+  const p = vals.length ? vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.99))] : 1;
+  const lim = Math.max(mode === "motion" ? 0.5 : 3.0, p * 1.05);
+  return mode === "difference" ? { lo: -lim, hi: lim } : { lo: 0, hi: lim };
+}
+
+function drawHeatMode(canvas, raw, cfg, big = false) {
+  if (!raw || !raw.ok) { clearCanvas(canvas, "No raw data"); return; }
+  const mode = cfg.dsp_heat_mode || "magnitude";
+  if (mode === "fusion") { drawFusionHeat(canvas, raw, cfg, big); return; }
+  if (mode === "motion" || mode === "snr" || mode === "difference") {
+    const key = mode === "motion" ? "motion_m" : mode === "snr" ? "snr_m" : "difference_m";
+    const m = raw[key];
+    if (!m || !m.length) { clearCanvas(canvas, "No data"); return; }
+    const { lo, hi } = specialRange(m, raw, mode);
+    const cmap = mode === "motion" ? "turbo" : mode === "snr" ? "viridis" : "icefire";
+    const label = mode === "motion" ? "Motion" : mode === "snr" ? "SNR" : "RX1 − RX2";
+    renderHeatMatrix(canvas, m, { lo, hi, cmap, unit: "dB" }, cfg, big, {
+      key: `mode_${mode}${big ? "_big" : ""}`, raw, source: "mode", detections: true, label,
+    });
+    return;
+  }
+  drawHeat(canvas, raw, "combined", cfg, big);
+}
+
+function drawFusionHeat(canvas, raw, cfg, big = false) {
+  const p = raw && raw.power;
+  if (!p || !p.rx1 || !p.rx2) { clearCanvas(canvas, "No power data"); return; }
+  const m1 = p.rx1, m2 = p.rx2;
+  const rows = m1.length, cols = m1[0].length;
+  const { r0, r1 } = viewRowRange(raw, rows);
+  const rowsView = r1 - r0 + 1;
+  const { ctx, w, h } = setupCanvas(canvas);
+  const padL = 5, padR = 5, padT = 5, padB = 18;
+  const cw = Math.max(10, w - padL - padR), ch = Math.max(10, h - padT - padB);
+  const c = raw.power_color || raw.heat_color || { lo: 30, hi: 60 };
+  let lo = Number(c.lo), hi = Number(c.hi);
+  if (!(hi > lo)) { lo = 30; hi = 60; }
+  const vals = [];
+  for (let r = r0; r <= r1; r++) for (let col = 0; col < cols; col++) { vals.push(m1[r][col]); vals.push(m2[r][col]); }
+  const tone = makeToneMapper(vals, lo, hi, cfg);
+  const norm1 = new Float32Array(rowsView * cols);
+  const norm2 = new Float32Array(rowsView * cols);
+  for (let r = 0; r < rowsView; r++) {
+    for (let col = 0; col < cols; col++) {
+      norm1[r * cols + col] = tone(m1[r0 + r][col]);
+      norm2[r * cols + col] = tone(m2[r0 + r][col]);
+    }
+  }
+  const shown1 = applyPersistence(`fusion_rx1${big ? "_big" : ""}`, norm1, cfg);
+  const shown2 = applyPersistence(`fusion_rx2${big ? "_big" : ""}`, norm2, cfg);
+  const off = document.createElement("canvas");
+  off.width = cols; off.height = rowsView;
+  const octx = off.getContext("2d");
+  const img = octx.createImageData(cols, rowsView);
+  for (let i = 0; i < shown1.length; i++) {
+    const a = shown1[i], b = shown2[i];
+    const idx = i * 4;
+    img.data[idx] = Math.round(255 * b);
+    img.data[idx + 1] = Math.round(255 * Math.min(1, 0.62 * (a + b)));
+    img.data[idx + 2] = Math.round(255 * a);
+    img.data[idx + 3] = 255;
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = !!cfg.dsp_interp;
+  ctx.drawImage(off, padL, padT, cw, ch);
+  const g = { padL, padT, cw, ch, r0, r1, rowsView, cols };
+  heatChrome(ctx, raw, cfg, big, g);
+  drawDetectionOverlay(ctx, raw, "fusion", g, cfg, big);
+  const mono = getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.font = (big ? "10px " : "9px ") + mono;
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  const lx = padL + cw - 150;
+  ctx.fillStyle = "#4cc9f0"; ctx.fillText("RX1", lx, 7);
+  ctx.fillStyle = "#f72585"; ctx.fillText("RX2", lx + 34, 7);
+  ctx.fillStyle = "#e8eef4"; ctx.fillText("both", lx + 68, 7);
+  canvas._heatGeom = { ...g, matrix: p.combined || m1, raw, unit: "dB", cmap: "fusion", label: "Fusion" };
+}
+
+function drawColorBar(ctx, x, y, w, h, cmap, lo, hi, unit, big = false) {
+  for (let i = 0; i < h; i++) {
+    const t = 1 - i / h;
+    const [r, g, b] = colorAt(cmap, t);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(x, y + i, w, 1);
+  }
+  ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.strokeRect(x, y, w, h);
+  const tc = themeColors();
+  ctx.fillStyle = tc.text; ctx.font = (big ? "9px " : "8px ") + getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.textAlign = "right";
+  ctx.fillText(num(hi, 0) + " " + unit, x - 3, y + 8);
+  ctx.fillText(num(lo, 0), x - 3, y + h);
+  ctx.textAlign = "left";
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawing: range-time heatmap (RTI)                                  */
+/* ------------------------------------------------------------------ */
+function drawRTI(canvas, cfg, big = false) {
+  const snap = state.snap;
+  if (!snap || !snap.raw || !snap.raw.ok) { clearCanvas(canvas, "No raw data"); return; }
+  const raw = snap.raw;
+  if (!state.rti.length) { clearCanvas(canvas, "Collecting range-time …"); return; }
+  const rowsAll = state.rti.length;
+  const last = state.rti[rowsAll - 1];
+  const colsAll = last.v.length;
+  const range = (raw.range_m && raw.range_m.length === colsAll) ? raw.range_m : null;
+  let c0 = 0, c1 = colsAll - 1;
+  if (range && raw.view) {
+    while (c0 < colsAll && range[c0] < raw.view.min_m) c0++;
+    while (c1 > c0 && range[c1] > raw.view.max_m) c1--;
+    if (c1 <= c0) { c0 = 0; c1 = colsAll - 1; }
+  }
+  const cols = c1 - c0 + 1;
+  const maxRows = big ? 260 : 150;
+  const from = Math.max(0, rowsAll - maxRows);
+  const rows = rowsAll - from;
+  const { ctx, w, h } = setupCanvas(canvas);
+  const tc = themeColors();
+  const mono = getComputedStyle(document.body).getPropertyValue("--mono");
+  const padL = 5, padR = 5, padT = 5, padB = 18;
+  const cw = Math.max(10, w - padL - padR), ch = Math.max(10, h - padT - padB);
+  const c = raw.power_color || raw.heat_color || { lo: 30, hi: 60 };
+  const vals = [];
+  for (let i = from; i < rowsAll; i++) for (let col = c0; col <= c1; col++) vals.push(state.rti[i].v[col]);
+  let lo = Number(c.lo), hi = Number(c.hi);
+  if (cfg.dsp_auto_contrast && vals.length) {
+    // RTI has its own value distribution (range maxima) – needs its own contrast
+    const sorted = vals.slice().sort((a, b) => a - b);
+    lo = sorted[Math.floor(sorted.length * 0.02)];
+    hi = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.98))];
+  }
+  if (!(hi > lo + 0.25)) { const mid = (lo + hi) / 2; lo = mid - 0.5; hi = mid + 0.5; }
+  const tone = makeToneMapper(vals, lo, hi, cfg);
+  const cmap = c.cmap || cfg.dsp_colormap || "magma";
+  const off = document.createElement("canvas");
+  off.width = cols; off.height = rows;
+  const octx = off.getContext("2d");
+  const img = octx.createImageData(cols, rows);
+  const samples = new Float32Array(rows * cols);
+  for (let r = 0; r < rows; r++) {
+    const entry = state.rti[rowsAll - 1 - r];   // newest row on top
+    for (let col = 0; col < cols; col++) {
+      const v = Number(entry.v[c0 + col]);
+      samples[r * cols + col] = v;
+      const [rr, gg, bb] = colorAt(cmap, tone(v));
+      const idx = (r * cols + col) * 4;
+      img.data[idx] = rr; img.data[idx + 1] = gg; img.data[idx + 2] = bb; img.data[idx + 3] = 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = !!cfg.dsp_interp;
+  ctx.drawImage(off, padL, padT, cw, ch);
+  if (cfg.dsp_show_grid) {
+    ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const x = padL + (cw * i) / 4;
+      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + ch); ctx.stroke();
+      const y = padT + (ch * i) / 4;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + cw, y); ctx.stroke();
+    }
+  }
+  ctx.fillStyle = tc.text;
+  ctx.font = (big ? "10.5px " : "9px ") + mono;
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText("now", padL + 3, padT + 3);
+  const secs = Math.max(0, last.t - state.rti[from].t);
+  ctx.textBaseline = "bottom";
+  ctx.fillText("−" + num(secs, 1) + " s", padL + 3, padT + ch - 2);
+  ctx.textBaseline = "top";
+  const r0v = range ? range[c0] : 0;
+  const r1v = range ? range[c1] : cols - 1;
+  const rMid = range ? range[Math.floor((c0 + c1) / 2)] : (cols - 1) / 2;
+  ctx.textAlign = "left"; ctx.fillText(num(r0v, 2) + " m", padL, padT + ch + 3);
+  ctx.textAlign = "center"; ctx.fillText(num(rMid, 2), padL + cw / 2, padT + ch + 3);
+  ctx.textAlign = "right"; ctx.fillText(num(r1v, 2) + " m", padL + cw, padT + ch + 3);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  drawColorBar(ctx, padL + cw - 8, padT + 4, 6, Math.min(60, ch * 0.5), cmap, lo, hi, "dB", big);
+  const meta = big ? $("#rtiBigMeta") : $("#rtiMeta");
+  if (meta) meta.textContent = `${num(secs, 1)} s · ${num(r0v, 2)}–${num(r1v, 2)} m · ${rows} rows`;
+  canvas._heatGeom = {
+    kind: "rti", padL, padT, cw, ch, rowsView: rows, cols, r0: 0, r1: rows - 1,
+    samples, unit: "dB",
+    times: state.rti.slice(from).map(e => e.t).reverse(),
+    ranges: range ? range.slice(c0, c1 + 1) : null,
+    cmap,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Hover-Readout                                                      */
+/* ------------------------------------------------------------------ */
+function hideHover() {
+  const tip = $("#hoverTip");
+  if (tip) tip.style.display = "none";
+}
+
+function heatPointFromEvent(canvas, ev) {
+  const g = canvas._heatGeom;
+  if (!g) return null;
+  const rect = canvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+  if (x < g.padL || x > g.padL + g.cw || y < g.padT || y > g.padT + g.ch) return null;
+  const col = Math.floor(((x - g.padL) / g.cw) * g.cols);
+  const rowView = Math.floor(((y - g.padT) / g.ch) * g.rowsView);
+  if (col < 0 || col >= g.cols || rowView < 0 || rowView >= g.rowsView) return null;
+  return { g, col, rowView };
+}
+
+function showHeatHover(canvas, ev) {
+  if (state.surf && state.surf.drag) { hideHover(); return; }
+  const p = heatPointFromEvent(canvas, ev);
+  if (!p) { hideHover(); return; }
+  const { g, col, rowView } = p;
+  let html;
+  if (g.kind === "rti") {
+    const v = g.samples[rowView * g.cols + col];
+    const t = g.times[rowView];
+    const age = state.snap ? Math.max(0, state.snap.t - t) : 0;
+    const r = g.ranges ? g.ranges[col] : col;
+    html = `<b>RTI</b><br>${num(r, 2)} m<br>${num(age, 1)} s ago<br>${num(v, 1)} ${g.unit || "dB"}`;
+  } else {
+    const row = g.r0 + rowView;
+    const rowArr = g.matrix && g.matrix[row];
+    const v = rowArr ? rowArr[col] : NaN;
+    const rm = g.raw && g.raw.range_m ? g.raw.range_m[row] : NaN;
+    const dm = g.raw && g.raw.doppler_mps ? g.raw.doppler_mps[col] : NaN;
+    html = `<b>${g.label || "Heatmap"}</b><br>${num(rm, 2)} m<br>${num(dm, 2)} m/s<br>${num(v, 1)} ${g.unit || "dB"}`;
+  }
+  const tip = $("#hoverTip");
+  if (!tip) return;
+  tip.innerHTML = html;
+  tip.style.display = "block";
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let left = ev.clientX + 14, top = ev.clientY + 14;
+  if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - 12;
+  if (top + th > window.innerHeight - 8) top = ev.clientY - th - 12;
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+}
+
+function pointInPoly(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    if (((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-9) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+function showSurfaceHover(canvas, ev) {
+  if (state.surf && state.surf.drag) { hideHover(); return; }
+  const quads = canvas._surfaceQuads || [];
+  const snap = state.snap;
+  if (!quads.length || !snap || !snap.raw) { hideHover(); return; }
+  const rect = canvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+  let hit = null;
+  for (let i = quads.length - 1; i >= 0; i--) {
+    if (pointInPoly(x, y, quads[i].poly)) { hit = quads[i]; break; }
+  }
+  if (!hit) { hideHover(); return; }
+  const raw = snap.raw;
+  const rm = raw.range_m ? raw.range_m[hit.row] : NaN;
+  const dm = raw.doppler_mps ? raw.doppler_mps[hit.col] : NaN;
+  const tip = $("#hoverTip");
+  if (!tip) return;
+  tip.innerHTML = `<b>3D surface</b><br>${num(rm, 2)} m<br>${num(dm, 2)} m/s<br>${num(hit.value, 1)} dB`;
+  tip.style.display = "block";
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let left = ev.clientX + 14, top = ev.clientY + 14;
+  if (left + tw > window.innerWidth - 8) left = ev.clientX - tw - 12;
+  if (top + th > window.innerHeight - 8) top = ev.clientY - th - 12;
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+}
+
+function bindHeatHover(canvas) {
+  if (!canvas) return;
+  canvas.addEventListener("mousemove", ev => showHeatHover(canvas, ev));
+  canvas.addEventListener("mouseleave", hideHover);
+}
+
+function bindSurfaceInteractions(canvas) {
+  if (!canvas) return;
+  const surf = state.surf;
+  canvas.addEventListener("pointerdown", ev => {
+    surf.drag = true;
+    surf.lastX = ev.clientX; surf.lastY = ev.clientY;
+    canvas.classList.add("dragging");
+    try { canvas.setPointerCapture(ev.pointerId); } catch (_) {}
+  });
+  canvas.addEventListener("pointermove", ev => {
+    if (!surf.drag) return;
+    const dx = ev.clientX - (surf.lastX || ev.clientX);
+    const dy = ev.clientY - (surf.lastY || ev.clientY);
+    surf.lastX = ev.clientX; surf.lastY = ev.clientY;
+    surf.yaw = (Number(surf.yaw) || 0) + dx * 0.008;
+    surf.pitch = clamp((Number(surf.pitch) || 1.02) + dy * 0.006, 0.15, 1.5);
+    hideHover();
+    if (state.snap) renderCurrent();
+  });
+  const end = () => {
+    if (!surf.drag) return;
+    surf.drag = false;
+    canvas.classList.remove("dragging");
+  };
+  canvas.addEventListener("pointerup", end);
+  canvas.addEventListener("pointercancel", end);
+  canvas.addEventListener("wheel", ev => {
+    ev.preventDefault();
+    surf.zoom = clamp((Number(surf.zoom) || 1) * (ev.deltaY < 0 ? 1.12 : 0.89), 0.35, 3.5);
+    if (state.snap) renderCurrent();
+  }, { passive: false });
+  canvas.addEventListener("dblclick", () => {
+    surf.yaw = -0.52; surf.pitch = 1.02; surf.zoom = 1;
+    if (state.snap) renderCurrent();
+  });
+  canvas.addEventListener("mousemove", ev => {
+    if (!surf.drag) showSurfaceHover(canvas, ev);
+  });
+  canvas.addEventListener("mouseleave", hideHover);
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawing: profiles                                                  */
+/* ------------------------------------------------------------------ */
+function drawRangeProfile(canvas, raw, cfg, big = false) {
+  if (!raw || !raw.ok) { clearCanvas(canvas, "No raw data"); return; }
+  const x = raw.range_m;
+  const view = raw.view || { min_m: -Infinity, max_m: Infinity };
+  let idx = [];
+  for (let i = 0; i < x.length; i++) if (x[i] >= view.min_m && x[i] <= view.max_m) idx.push(i);
+  if (idx.length < 2) idx = x.map((_, i) => i);
+  const series = [
+    { label: "RX1", color: "#4cc9f0", values: idx.map(i => raw.profiles.range_rx1[i]) },
+    { label: "RX2", color: "#f72585", values: idx.map(i => raw.profiles.range_rx2[i]) },
+    { label: "Mean", color: "#ffd166", values: idx.map(i => raw.profiles.range_combined[i]) },
+  ];
+  drawSeries(canvas, series, {
+    x: idx.map(i => x[i]),
+    xLabel: "Range (m)",
+    yLabel: "dB",
+    hline: cfg.det_show_threshold && raw.detection_meta ? raw.detection_meta.threshold_db : null,
+    hlineLabel: "Threshold",
+    xFmt: v => num(v, 2),
+    yFmt: v => num(v, 0),
+    padL: big ? 50 : 42,
+  });
+}
+
+function drawDopplerProfile(canvas, raw, cfg, big = false) {
+  if (!raw || !raw.ok) { clearCanvas(canvas, "No raw data"); return; }
+  const x = raw.doppler_mps;
+  const series = [
+    { label: "RX1", color: "#4cc9f0", values: raw.profiles.doppler_rx1 },
+    { label: "RX2", color: "#f72585", values: raw.profiles.doppler_rx2 },
+    { label: "Mean", color: "#ffd166", values: raw.profiles.doppler_combined },
+  ];
+  const dc = Number(cfg.det_exclude_dc_bins) || 0;
+  const band = dc > 0 ? {
+    from: -dc * (Number(cfg.dsp_doppler_bin_mps) || 0.05),
+    to: dc * (Number(cfg.dsp_doppler_bin_mps) || 0.05),
+    color: "rgba(255,209,102,.08)", label: "DC excl.",
+  } : null;
+  drawSeries(canvas, series, {
+    x,
+    xLabel: "Doppler (m/s)",
+    yLabel: "dB",
+    vlines: [0],
+    bands: band ? [band] : [],
+    xFmt: v => num(v, 2),
+    yFmt: v => num(v, 0),
+    padL: big ? 50 : 42,
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawing: waterfall                                                 */
+/* ------------------------------------------------------------------ */
+function drawWaterfall(canvas, cfg, big = false) {
+  const snap = state.snap;
+  if (!snap || !snap.raw || !snap.raw.ok) { clearCanvas(canvas, "No raw data"); return; }
+  if (!state.wf.length) { clearCanvas(canvas, "Collecting waterfall …"); return; }
+  const rows = state.wf.length;
+  const cols = state.wf[0].length;
+  const { ctx, w, h } = setupCanvas(canvas);
+  const tc = themeColors();
+  const padL = 6, padR = 6, padT = 5, padB = 18;
+  const cw = Math.max(10, w - padL - padR), ch = Math.max(10, h - padT - padB);
+  const c = snap.raw.power_color || { lo: 30, hi: 60 };
+  let lo = Number(c.lo), hi = Number(c.hi);
+  if (!(hi > lo)) { lo = Infinity; hi = -Infinity; for (const row of state.wf) for (const v of row) { lo = Math.min(lo, v); hi = Math.max(hi, v); } if (!(hi > lo)) hi = lo + 1; }
+  const cmap = c.cmap || cfg.dsp_colormap || "magma";
+  const off = document.createElement("canvas");
+  off.width = cols; off.height = rows;
+  const octx = off.getContext("2d");
+  const img = octx.createImageData(cols, rows);
+  for (let r = 0; r < rows; r++) {
+    const src = state.wf[rows - 1 - r];
+    for (let col = 0; col < cols; col++) {
+      const [rr, gg, bb] = colorAt(cmap, (src[col] - lo) / (hi - lo || 1));
+      const idx = (r * cols + col) * 4;
+      img.data[idx] = rr; img.data[idx + 1] = gg; img.data[idx + 2] = bb; img.data[idx + 3] = 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(off, padL, padT, cw, ch);
+  // Labels
+  ctx.fillStyle = tc.text;
+  ctx.font = (big ? "10px " : "9px ") + getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.textBaseline = "top";
+  const secs = rows / Math.max(1, Number(cfg.dsp_stream_hz) || 10);
+  ctx.fillText("now", padL + 3, padT + 3);
+  ctx.textBaseline = "bottom";
+  ctx.fillText("−" + num(secs, 0) + " s", padL + 3, padT + ch - 2);
+  ctx.textBaseline = "top"; ctx.textAlign = "center";
+  const dm = snap.raw.doppler_mps || [];
+  ctx.fillText(num(dm[0], 2) + " m/s", padL, padT + ch + 3);
+  ctx.fillText("0", padL + cw / 2, padT + ch + 3);
+  ctx.fillText(num(dm[cols - 1], 2), padL + cw, padT + ch + 3);
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  drawColorBar(ctx, padL + cw - 8, padT + 4, 6, Math.min(70, ch * 0.6), cmap, lo, hi, "dB", big);
+  const meta = $("#wfMeta");
+  if (meta) meta.textContent = `Row ${snap.raw.waterfall.row} · ${num(snap.raw.waterfall.range_m, 2)} m · ${snap.raw.waterfall.source}`;
+  const metaBig = $("#wfBigMeta");
+  if (metaBig) metaBig.textContent = `Row ${snap.raw.waterfall.row} · ${num(snap.raw.waterfall.range_m, 2)} m`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawing: map                                                       */
+/* ------------------------------------------------------------------ */
+function drawMap(canvas, big = false) {
+  const snap = state.snap;
+  const cfg = state.config;
+  const { ctx, w, h } = setupCanvas(canvas);
+  const tc = themeColors();
+  if (!snap || !snap.raw || !snap.raw.ok) { clearCanvas(canvas, "No raw data"); return; }
+  const size = Math.max(0.5, Number(snap.auto && snap.auto.map_size_m) || Number(cfg.ui_map_size_m) || 3);
+  const pad = big ? 42 : 28;
+  const cw = w - pad * 2, ch = h - pad * 2;
+  const X = x => pad + cw / 2 + (x / size) * (cw / 2);
+  const Y = y => h - pad - (y / size) * ch;
+  // Grid
+  const step = size <= 1.5 ? 0.25 : size <= 3 ? 0.5 : size <= 6 ? 1 : 2;
+  ctx.strokeStyle = tc.grid; ctx.lineWidth = 1;
+  for (let g = -size; g <= size + 1e-9; g += step) {
+    ctx.beginPath(); ctx.moveTo(X(g), pad); ctx.lineTo(X(g), h - pad); ctx.stroke();
+  }
+  for (let g = 0; g <= size + 1e-9; g += step) {
+    ctx.beginPath(); ctx.moveTo(pad, Y(g)); ctx.lineTo(w - pad, Y(g)); ctx.stroke();
+  }
+  // Range rings
+  ctx.strokeStyle = "rgba(76,201,240,.16)"; ctx.setLineDash([4, 4]);
+  for (let r = step; r <= size; r += step) {
+    const rr = (r / size) * (h - pad * 2);
+    ctx.beginPath(); ctx.arc(X(0), Y(0), rr, Math.PI, Math.PI * 2); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // Axes
+  ctx.strokeStyle = tc.axis;
+  ctx.beginPath(); ctx.moveTo(pad, Y(0)); ctx.lineTo(w - pad, Y(0)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(0), pad); ctx.stroke();
+  ctx.fillStyle = tc.text; ctx.font = "9.5px " + getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (let g = -size; g <= size + 1e-9; g += step) {
+    if (Math.abs(g) < 1e-9) continue;
+    ctx.fillText(num(g, g % 1 ? 1 : 0), X(g), Y(0) + 3);
+  }
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let g = step; g <= size + 1e-9; g += step) ctx.fillText(num(g, g % 1 ? 1 : 0), X(0) - 4, Y(g));
+  // Radar
+  ctx.fillStyle = "rgba(76,201,240,.85)";
+  ctx.beginPath(); ctx.arc(X(0), Y(0), 4, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "rgba(76,201,240,.45)"; ctx.beginPath(); ctx.arc(X(0), Y(0), 8, 0, Math.PI * 2); ctx.stroke();
+  // Points
+  const points = snap.points || [];
+  const maxAge = Number(cfg.ui_point_age_s) || 120;
+  for (const p of points) {
+    const age = Number(p.age_s) || 0;
+    if (age > maxAge) continue;
+    const alpha = clamp(1 - age / maxAge, 0.12, 0.9);
+    const v = Number(p.v) || 0;
+    const col = v > 1 ? "247,37,133" : v < -1 ? "76,201,240" : "150,170,190";
+    ctx.fillStyle = `rgba(${col},${alpha})`;
+    ctx.beginPath(); ctx.arc(X(Number(p.x) || 0), Y(Number(p.y) || 0), 2.1, 0, Math.PI * 2); ctx.fill();
+  }
+  // Trail
+  if (cfg.ui_show_trail && state.trail.length > 1) {
+    ctx.strokeStyle = "rgba(255,209,102,.55)"; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    state.trail.forEach((p, i) => {
+      const xx = X(p.x), yy = Y(p.y);
+      if (i === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+    });
+    ctx.stroke();
+  }
+  // Target
+  if (cfg.ui_show_target) {
+    let t = snap.target;
+    if (!t || t.x === null || t.x === undefined || (t.age_s || 0) > (Number(cfg.det_target_hold_s) || 2)) t = snap.pseudo_target;
+    if (t && t.x !== null && t.x !== undefined && t.y !== null && t.y !== undefined) {
+      const xx = X(t.x), yy = Y(t.y);
+      const col = t.source === "raw_peak" ? "#ffd166" : "#7ae582";
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(xx, yy, big ? 10 : 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xx - 13, yy); ctx.lineTo(xx + 13, yy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xx, yy - 13); ctx.lineTo(xx, yy + 13); ctx.stroke();
+      ctx.fillStyle = col; ctx.font = "10px " + getComputedStyle(document.body).getPropertyValue("--mono");
+      ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+      ctx.fillText((t.source === "raw_peak" ? "Peak " : "Target ") + num(t.y, 2) + " m", xx + 13, yy - 4);
+    }
+  }
+  // Info
+  ctx.fillStyle = tc.text; ctx.font = (big ? "11px " : "10px ") + getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText(`Map ±${num(size, 1)} m · ${points.length} points`, pad, 4);
+  ctx.textAlign = "right"; ctx.textBaseline = "top";
+  ctx.fillText(snap.presence === null ? "Presence –" : (snap.presence ? "Presence YES" : "Presence NO"), w - pad, 4);
+  const mm = $("#mapMeta");
+  if (mm) mm.textContent = `±${num(size, 2)} m · ${points.length} pts`;
+  const mb = $("#mapBigMeta");
+  if (mb) mb.textContent = `±${num(size, 2)} m · ${points.length} points · Trail ${state.trail.length}`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawing: 3D surface                                                */
+/* ------------------------------------------------------------------ */
+function drawSurface(canvas) {
+  const snap = state.snap;
+  const cfg = state.config;
+  if (!snap || !snap.raw || !snap.raw.ok) { clearCanvas(canvas, "No raw data"); return; }
+  const raw = snap.raw;
+  const src = cfg.dsp_3d_source || "combined";
+  const pow = raw.power || {};
+  const m = pow[src] || pow.combined ||
+    (raw[src] && raw[src].m) || (raw.combined && raw.combined.m);
+  if (!m || !m.length || !m[0]) { clearCanvas(canvas, "No channel"); return; }
+  const rows = m.length, cols = m[0].length;
+  const { r0, r1 } = viewRowRange(raw, rows);
+  const stride = Math.max(1, Math.min(8, Number(cfg.ui_3d_decimate) || 1));
+  let rIdx = [], cIdx = [];
+  for (let r = r0; r <= r1; r += stride) rIdx.push(r);
+  if (rIdx[rIdx.length - 1] !== r1) rIdx.push(r1);
+  if (rIdx.length < 2) rIdx = [r0, r1];
+  for (let c = 0; c < cols; c += stride) cIdx.push(c);
+  if (cIdx[cIdx.length - 1] !== cols - 1) cIdx.push(cols - 1);
+  if (cIdx.length < 2) cIdx = [0, cols - 1];
+  const nR = rIdx.length, nC = cIdx.length;
+  const color = raw.power_color || { lo: 30, hi: 60, cmap: "magma" };
+  let lo = Number(color.lo), hi = Number(color.hi);
+  if (!(hi > lo)) { lo = 0; hi = 60; }
+  const vals = [];
+  for (const r of rIdx) for (const c of cIdx) vals.push(Number(m[r][c]));
+  const tone = makeToneMapper(vals, lo, hi, cfg);
+  const cmap = color.cmap || cfg.dsp_colormap || "magma";
+  const heightScale = Math.max(0.1, Number(cfg.ui_3d_height) || 1);
+  const { ctx, w, h } = setupCanvas(canvas);
+  const tc = themeColors();
+  const now = performance.now();
+  const surf = state.surf;
+  const dt = surf.lastT ? Math.min(0.25, (now - surf.lastT) / 1000) : 0;
+  surf.lastT = now;
+  if (cfg.dsp_3d_rotate && !surf.drag) surf.yaw += 0.28 * dt;
+  const yaw = Number(surf.yaw) || 0, pitch = clamp(Number(surf.pitch) || 1.02, 0.15, 1.5);
+  const zoom = clamp(Number(surf.zoom) || 1, 0.35, 3.5);
+  const cosY = Math.cos(yaw), sinY = Math.sin(yaw), cosP = Math.cos(pitch), sinP = Math.sin(pitch);
+  const aspectU = 1.55, aspectV = 1.0;
+  const hs = heightScale * 0.34;
+  // 3D points: x = horizontal, y = height, z = depth (camera looks along +z)
+  const V = [];
+  for (let ri = 0; ri < nR; ri++) {
+    const row = [];
+    for (let ci = 0; ci < nC; ci++) {
+      const u = (ci / (nC - 1 || 1) - 0.5) * aspectU;
+      const v = (ri / (nR - 1 || 1) - 0.5) * aspectV;
+      const hgt = tone(m[rIdx[ri]][cIdx[ci]]) * hs;
+      const x1 = u * cosY - v * sinY;
+      const z1 = u * sinY + v * cosY;
+      const y1 = hgt * cosP - z1 * sinP;
+      const z2 = hgt * sinP + z1 * cosP;
+      row.push([x1, y1, z2, hgt]);
+    }
+    V.push(row);
+  }
+  const scale = Math.min(w * 0.62, h * 0.78) * zoom;
+  const cx = w / 2, cy = h * 0.56;
+  const persp = z => 2.4 / (2.4 + z);
+  const projP = p => {
+    const f = persp(p[2]);
+    return [cx + p[0] * scale * f, cy - p[1] * scale * 0.62 * f];
+  };
+  const q = V.map(row => row.map(projP));
+  // Base grid (ground plane) for spatial depth
+  ctx.strokeStyle = "rgba(255,255,255,.07)"; ctx.lineWidth = 1;
+  const baseProj = (ri, ci) => projP([V[ri][ci][0], -0.28, V[ri][ci][2], 0]);
+  for (let ri = 0; ri < nR; ri += Math.max(1, Math.floor(nR / 6))) {
+    ctx.beginPath();
+    for (let ci = 0; ci < nC; ci++) { const p = baseProj(ri, ci); if (ci === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); }
+    ctx.stroke();
+  }
+  for (let ci = 0; ci < nC; ci += Math.max(1, Math.floor(nC / 8))) {
+    ctx.beginPath();
+    for (let ri = 0; ri < nR; ri++) { const p = baseProj(ri, ci); if (ri === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]); }
+    ctx.stroke();
+  }
+  // Quads with depth sorting and Lambert lighting
+  const lx = -0.42, ly = 0.82, lz = -0.39;
+  const quads = [];
+  for (let ri = 0; ri < nR - 1; ri++) {
+    for (let ci = 0; ci < nC - 1; ci++) {
+      const a = V[ri][ci], b = V[ri][ci + 1], d = V[ri + 1][ci], e = V[ri + 1][ci + 1];
+      const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+      const vx = d[0] - a[0], vy = d[1] - a[1], vz = d[2] - a[2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      nx /= nl; ny /= nl; nz /= nl;
+      if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+      const diff = Math.max(0, nx * lx + ny * ly + nz * lz);
+      const shade = cfg.dsp_3d_light ? 0.48 + 0.72 * diff : 1;
+      const val = (m[rIdx[ri]][cIdx[ci]] + m[rIdx[ri]][cIdx[ci + 1]] +
+        m[rIdx[ri + 1]][cIdx[ci]] + m[rIdx[ri + 1]][cIdx[ci + 1]]) / 4;
+      const [rr, gg, bb] = colorAt(cmap, tone(val));
+      const zAvg = (a[2] + b[2] + d[2] + e[2]) / 4;
+      quads.push({
+        z: zAvg, ri, ci, val,
+        poly: [q[ri][ci], q[ri][ci + 1], q[ri + 1][ci + 1], q[ri + 1][ci]],
+        fill: `rgb(${Math.min(255, Math.round(rr * shade))},${Math.min(255, Math.round(gg * shade))},${Math.min(255, Math.round(bb * shade))})`,
+      });
+    }
+  }
+  quads.sort((A, B) => B.z - A.z);
+  const wire = !!cfg.dsp_3d_wireframe;
+  ctx.lineJoin = "round";
+  for (const Q of quads) {
+    ctx.beginPath();
+    ctx.moveTo(Q.poly[0][0], Q.poly[0][1]);
+    for (let i = 1; i < 4; i++) ctx.lineTo(Q.poly[i][0], Q.poly[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = Q.fill; ctx.fill();
+    ctx.strokeStyle = wire ? "rgba(255,255,255,.38)" : "rgba(0,0,0,.18)";
+    ctx.lineWidth = wire ? 0.8 : 0.6; ctx.stroke();
+  }
+  // Axes
+  const nearL = q[nR - 1][0], nearR = q[nR - 1][nC - 1], farL = q[0][0];
+  ctx.strokeStyle = tc.axis; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(nearL[0], nearL[1]); ctx.lineTo(nearR[0], nearR[1]); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(nearL[0], nearL[1]); ctx.lineTo(farL[0], farL[1]); ctx.stroke();
+  ctx.fillStyle = tc.text; ctx.font = "9.5px " + getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.fillText("−v", nearL[0] - 8, nearL[1] + 3);
+  ctx.fillText("+v", nearR[0] + 8, nearR[1] + 3);
+  ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+  ctx.fillText(num(raw.range_m[r1], 2) + " m", farL[0] + 4, farL[1] - 3);
+  ctx.fillText(num(raw.range_m[r0], 2) + " m", nearL[0] + 4, nearL[1] + 12);
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText(`3D · ${src} · Range × Doppler × level`, 4, 4);
+  drawColorBar(ctx, w - 10, 8, 6, Math.min(70, h * 0.35), cmap, lo, hi, "dB", false);
+  // Remember hover hit areas
+  const mono = getComputedStyle(document.body).getPropertyValue("--mono");
+  canvas._surfaceQuads = quads.map(Q => ({
+    poly: Q.poly, ri: Q.ri, ci: Q.ci, value: Q.val,
+    row: rIdx[Q.ri], col: cIdx[Q.ci], mono,
+  }));
+  const sm = $("#surfMeta");
+  if (sm) sm.textContent = `${src} · ${nR}×${nC} · ${num(lo, 0)}…${num(hi, 0)} dB · yaw ${num(yaw * 57.3, 0)}° · pitch ${num(pitch * 57.3, 0)}° · ${num(zoom, 2)}×`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Drawing: vitals                                                    */
+/* ------------------------------------------------------------------ */
+function drawSpark(canvas, values, color, label) {
+  const { ctx, w, h } = setupCanvas(canvas);
+  const tc = themeColors();
+  if (!values || values.length < 2) {
+    clearCanvas(canvas, "–");
+    return;
+  }
+  const vals = values.slice(-240).map(Number).filter(Number.isFinite);
+  if (vals.length < 2) { clearCanvas(canvas, "–"); return; }
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (!(hi > lo)) { hi = lo + 1e-6; }
+  const pad = (hi - lo) * 0.15;
+  lo -= pad; hi += pad;
+  const X = i => 2 + (i / (vals.length - 1)) * (w - 4);
+  const Y = v => h - 3 - ((v - lo) / (hi - lo)) * (h - 6);
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  vals.forEach((v, i) => { const x = X(i), y = Y(v); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+  ctx.stroke();
+  ctx.fillStyle = color;
+  const lx = X(vals.length - 1), ly = Y(vals[vals.length - 1]);
+  ctx.beginPath(); ctx.arc(lx, ly, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = tc.text; ctx.font = "9px " + getComputedStyle(document.body).getPropertyValue("--mono");
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillText(num(vals[vals.length - 1], 3), 4, 3);
+}
+
+function drawFFT(canvas, fft, cfg, big = false) {
+  if (!fft) { clearCanvas(canvas, "Collecting phase history …"); return; }
+  const series = [{ label: "Phase", color: "#b388ff", values: fft.mag_db }];
+  const bl = Number(cfg.dsp_vital_breath_low_hz) || 0.10;
+  const bh = Number(cfg.dsp_vital_breath_high_hz) || 0.60;
+  const hl = Number(cfg.dsp_vital_heart_low_hz) || 0.80;
+  const hh = Number(cfg.dsp_vital_heart_high_hz) || 2.00;
+  const vlines = [];
+  if (fft.breath) vlines.push(fft.breath.hz);
+  if (fft.heart) vlines.push(fft.heart.hz);
+  drawSeries(canvas, series, {
+    x: fft.freqs,
+    bands: [
+      { from: bl, to: bh, color: "rgba(122,229,130,.10)", label: "Breathing" },
+      { from: hl, to: hh, color: "rgba(247,37,133,.10)", label: "Heart" },
+    ],
+    vlines,
+    xLabel: "Frequency (Hz)",
+    yLabel: "dB",
+    xFmt: v => num(v, 2),
+    yFmt: v => num(v, 0),
+    padL: big ? 50 : 40,
+  });
+  const meta = $("#vitFftVal");
+  if (meta) meta.textContent = (fft.breath ? num(fft.breath.bpm, 0) : "–") + " / " + (fft.heart ? num(fft.heart.bpm, 0) : "–") + " BPM";
+  const fm = $("#fftBigMeta");
+  if (fm) fm.textContent = `Breathing ${fft.breath ? num(fft.breath.bpm, 1) : "–"} BPM · Heart ${fft.heart ? num(fft.heart.bpm, 1) : "–"} BPM · ${num(fft.window_s, 0)} s`;
+}
+
+function renderVitals(snap, big = false) {
+  const ph = state.phaseHist;
+  const vals = {
+    total: ph.map(p => p.total),
+    breath: ph.map(p => p.breath),
+    heart: ph.map(p => p.heart),
+  };
+  drawSpark($("#vitTotal"), vals.total, "#4cc9f0");
+  drawSpark($("#vitBreath"), vals.breath, "#7ae582");
+  drawSpark($("#vitHeart"), vals.heart, "#f72585");
+  drawFFT($("#vitalFFT"), snap.vital_fft, state.config, false);
+  $("#vitTotalVal").textContent = vals.total.length ? num(vals.total[vals.total.length - 1], 3) : "–";
+  $("#vitBreathVal").textContent = vals.breath.length ? num(vals.breath[vals.breath.length - 1], 3) : "–";
+  $("#vitHeartVal").textContent = vals.heart.length ? num(vals.heart[vals.heart.length - 1], 3) : "–";
+  const meta = $("#vitalMeta");
+  if (meta) {
+    const b = snap.vitals.fft_breath_bpm ?? snap.vitals.breath_rate;
+    const h = snap.vitals.fft_heart_bpm ?? snap.vitals.heart_rate;
+    meta.textContent = `Breathing ${num(b, 0)} BPM · Heart ${num(h, 0)} BPM · ${snap.vitals.presence ? "presence" : "no presence"}`;
+  }
+  if (big) {
+    const n = ph.length;
+    if (n >= 2) {
+      const t0 = ph[0].t;
+      drawSeries($("#vitBig"), [
+        { label: "Total", color: "#4cc9f0", values: vals.total },
+        { label: "Breathing", color: "#7ae582", values: vals.breath },
+        { label: "Heart", color: "#f72585", values: vals.heart },
+      ], {
+        x: ph.map(p => p.t - t0),
+        xLabel: "Time (s)",
+        yLabel: "Phase",
+        xFmt: v => num(v, 0),
+        yFmt: v => num(v, 2),
+        padL: 50,
+      });
+    } else {
+      clearCanvas($("#vitBig"), "Collecting phase data …");
+    }
+    drawFFT($("#vitalFFTBig"), snap.vital_fft, state.config, true);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Tables                                                             */
+/* ------------------------------------------------------------------ */
+function kvTable(rows) {
+  return '<table class="kv">' + rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("") + "</table>";
+}
+
+function renderDetections(snap) {
+  const dets = (snap.raw && snap.raw.detections) || [];
+  const meta = snap.raw && snap.raw.detection_meta;
+  const badge = $("#detMeta");
+  if (badge) {
+    badge.textContent = meta ? `${dets.length} · ${meta.method} · noise ${num(meta.noise_db, 1)} dB · threshold ${num(meta.threshold_db, 1)} dB` : "–";
+  }
+  const body = $("#detTable tbody");
+  if (!body) return;
+  if (!dets.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty">No detections – adjust the threshold or range.</td></tr>`;
+    return;
+  }
+  body.innerHTML = dets.slice(0, 40).map((d, i) => `<tr>
+    <td class="num">${i + 1}</td>
+    <td class="num">${num(d.range_m, 3)} m</td>
+    <td class="num">${num(d.velocity_mps, 2)}</td>
+    <td class="num">${num(d.power_db, 1)}</td>
+    <td class="num">${num(d.snr_db, 1)}</td>
+    <td>${esc(d.channel)}</td>
+    <td class="num">${int(d.doppler_bin)}</td>
+  </tr>`).join("");
+}
+
+function renderStats(snap) {
+  const el = $("#statsTable");
+  if (!el) return;
+  const r = snap.raw || {};
+  const st = snap.stats || {};
+  const det = r.detection_meta || {};
+  const rows = [
+    ["Connection", `${snap.conn.connected ? "connected" : "disconnected"} · ${snap.conn.port || "–"} · ${snap.conn.mode || "–"}`],
+    ["Firmware", snap.conn.version || "–"],
+    ["Source", snap.source || "–"],
+    ["Frames/s", num(st.frames_per_s, 2)],
+    ["Bytes/s", fmtBytes(st.bytes_per_s)],
+    ["Frames total", int(st.frames_total)],
+    ["Raw rate", Object.entries(st.raw_rate_hz || {}).map(([k, v]) => `${k}: ${v} Hz`).join(" · ") || "–"],
+    ["Parser", `OK ${int(st.parser?.frames)} · head errors ${int(st.parser?.head_err)} · data errors ${int(st.parser?.data_err)}`],
+    ["Raw data", r.ok ? `${r.rows} × ${r.cols} · ${num(r.physical_min_m, 2)}…${num(r.physical_max_m, 2)} m` : "–"],
+    ["Display range", r.ok ? `${num(r.view.min_m, 2)}…${num(r.view.max_m, 2)} m (${r.view_mode})` : "–"],
+    ["Color range", r.power_color ? `${num(r.power_color.lo, 1)}…${num(r.power_color.hi, 1)} dB` : "–"],
+    ["Display gain", r.ok ? `${num(r.gain_db, 1)} dB` : "–"],
+    ["Motion", r.ok ? `${num(r.motion_db, 2)} dB` : "–"],
+    ["Detection", det.enabled ? `${det.count} peaks · ${det.method} · channel ${det.channel}` : "off"],
+    ["Noise / threshold", det.enabled ? `${num(det.noise_db, 1)} / ${num(det.threshold_db, 1)} dB` : "–"],
+    ["Auto", snap.auto ? `${snap.auto.enabled ? "on" : "off"} · contrast ${snap.auto.contrast ? `${num(snap.auto.contrast.lo, 1)}…${num(snap.auto.contrast.hi, 1)}` : "–"} dB · gain ${num(snap.auto.gain_db, 1)} dB` : "–"],
+    ["Presence", snap.presence === null ? "–" : (snap.presence ? "YES" : "no")],
+    ["Distance", snap.distance_cm === null ? "–" : `${num(snap.distance_cm, 1)} cm`],
+    ["Zone", snap.zone && snap.zone.min_cm !== null ? `${snap.zone.min_cm} / ${snap.zone.max_cm} / ${snap.zone.width_cm} cm` : "–"],
+    ["Recording", snap.rec ? `${snap.rec.recording ? "running" : "off"} · ${snap.rec.frames} frames` : "–"],
+    ["Uptime", `${num(st.uptime_s, 0)} s`],
+  ];
+  el.innerHTML = kvTable(rows);
+}
+
+function renderTargetInfo(snap) {
+  const el = $("#targetInfo");
+  if (!el) return;
+  const t = snap.target;
+  const p = snap.pseudo_target;
+  const zone = snap.zone || {};
+  const rows = [
+    ["Presence", snap.presence === null ? "–" : (snap.presence ? "YES" : "no")],
+    ["Distance (radar)", snap.distance_cm === null ? "–" : `${num(snap.distance_cm, 1)} cm`],
+    ["Radar target x", t && t.x !== null ? `${num(t.x, 3)} m` : "–"],
+    ["Radar target y", t && t.y !== null ? `${num(t.y, 3)} m` : "–"],
+    ["Target age", t && t.age_s !== null && t.age_s !== undefined ? `${num(t.age_s, 1)} s` : "–"],
+    ["Raw peak", p ? `${num(p.y, 2)} m · ${num(p.power_db, 1)} dB` : "–"],
+    ["Zone min/max/width", zone.min_cm !== null && zone.min_cm !== undefined ? `${zone.min_cm} / ${zone.max_cm} / ${zone.width_cm} cm` : "–"],
+    ["Points", (snap.points || []).length],
+    ["Trail", state.trail.length],
+  ];
+  el.innerHTML = kvTable(rows);
+  const pt = $("#pointTable");
+  if (pt) {
+    const pts = (snap.points || []).slice(-20).reverse();
+    if (!pts.length) pt.innerHTML = `<div class="empty">No point cloud.</div>`;
+    else {
+      pt.innerHTML = '<table class="table"><thead><tr><th>x</th><th>y</th><th>v</th><th>ID</th><th>Age</th></tr></thead><tbody>' +
+        pts.map(p => `<tr><td class="num">${num(p.x, 2)}</td><td class="num">${num(p.y, 2)}</td><td class="num">${int(p.v)}</td><td class="num">${int(p.id)}</td><td class="num">${num(p.age_s, 1)} s</td></tr>`).join("") +
+        "</tbody></table>";
+    }
+    const pm = $("#pointMeta");
+    if (pm) pm.textContent = `${(snap.points || []).length} points`;
+  }
+}
+
+function renderVitalStats(snap) {
+  const el = $("#vitalStats");
+  if (!el) return;
+  const v = snap.vitals || {};
+  const f = snap.vital_fft;
+  const rows = [
+    ["Phase total", num(v.phase?.total, 4)],
+    ["Breathing (phase)", num(v.phase?.breath, 4)],
+    ["Heart (phase)", num(v.phase?.heart, 4)],
+    ["Breathing rate (radar 0x0A14)", v.breath_rate === null || v.breath_rate === undefined ? "–" : `${num(v.breath_rate, 1)} BPM`],
+    ["Heart rate (radar 0x0A15)", v.heart_rate === null || v.heart_rate === undefined ? "–" : `${num(v.heart_rate, 1)} BPM`],
+    ["Breathing rate (local FFT)", f && f.breath ? `${num(f.breath.bpm, 1)} BPM / ${num(f.breath.hz, 3)} Hz` : "–"],
+    ["Heart rate (local FFT)", f && f.heart ? `${num(f.heart.bpm, 1)} BPM / ${num(f.heart.hz, 3)} Hz` : "–"],
+    ["FFT window", f ? `${num(f.window_s, 1)} s · n=${f.n} · fs=${f.fs} Hz` : "–"],
+    ["Phase samples", state.phaseHist.length],
+    ["Motion", `${num(v.motion_db, 2)} dB`],
+    ["Presence", v.presence === null ? "–" : (v.presence ? "YES" : "no")],
+    ["Distance", v.distance_cm === null ? "–" : `${num(v.distance_cm, 1)} cm`],
+    ["Note", "The ADT6101P does not provide true height. The 3D view is range × Doppler × level, not a spatial y/z map."],
+  ];
+  el.innerHTML = kvTable(rows);
+}
+
+/* ------------------------------------------------------------------ */
+/* Files / recording                                                  */
+/* ------------------------------------------------------------------ */
+function renderFiles() {
+  const files = state.files || [];
+  const html = files.length
+    ? files.map(f => `<div class="file-item"><a href="${esc(f.url)}" download>${esc(f.name)}</a><span class="meta">${esc(f.kind)} · ${fmtBytes(f.size)} · ${esc(dateStr(f.mtime))}</span></div>`).join("")
+    : `<div class="empty">No files.</div>`;
+  const fl = $("#fileList");
+  if (fl) fl.innerHTML = html;
+  const ft = $("#fileTable");
+  if (ft) {
+    ft.innerHTML = files.length
+      ? '<table class="table"><thead><tr><th>File</th><th>Type</th><th>Size</th><th>Time</th></tr></thead><tbody>' +
+        files.map(f => `<tr><td><a href="${esc(f.url)}" download style="color:var(--accent)">${esc(f.name)}</a></td><td>${esc(f.kind)}</td><td class="num">${fmtBytes(f.size)}</td><td>${esc(dateStr(f.mtime))}</td></tr>`).join("") +
+        "</tbody></table>"
+      : `<div class="empty">No files. Start a recording or create a snapshot.</div>`;
+  }
+  const rs = $("#recStatus");
+  if (rs && state.snap) {
+    const r = state.snap.rec || {};
+    rs.innerHTML = kvTable([
+      ["Recording", r.recording ? "running" : "off"],
+      ["Source", r.source || "–"],
+      ["Frames", int(r.frames)],
+      ["Duration", `${num(r.seconds, 1)} s`],
+      ["Limit", r.max_frames || "∞"],
+      ["Last file", r.last_saved || "–"],
+      ["Last snapshot", r.last_snapshot || "–"],
+      ["Files in folder", files.length],
+    ]);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Firmware                                                           */
+/* ------------------------------------------------------------------ */
+function renderPatch(patch = state.lastPatch) {
+  if (!patch) {
+    const fo = $("#fwOutput"); if (fo) fo.textContent = "–";
+    const fv = $("#fwViewOutput"); if (fv) fv.textContent = "–";
+    return;
+  }
+  const text = patch.stdout || patch.stderr || "–";
+  const set = (id) => { const el = $(id); if (el) el.textContent = text; };
+  set("#fwOutput"); set("#fwViewOutput");
+  const info = patch.ok ? "Image generated – NOT flashed." : "Image generation failed.";
+  const fi = $("#fwInfo"); if (fi) fi.textContent = info;
+  const fvi = $("#fwViewInfo"); if (fvi) fvi.textContent = info;
+  let html = "";
+  if (patch.manifest) {
+    const m = patch.manifest;
+    const outputs = m.outputs || {};
+    const rows = [];
+    for (const [name, o] of Object.entries(outputs)) {
+      if (!o) continue;
+      rows.push([name, o.path || "–"]);
+      if (o.sha256) rows.push([name + " SHA-256", o.sha256]);
+      if (o.bytes !== undefined) rows.push([name + " Bytes", String(o.bytes)]);
+    }
+    if (m.expected_payload_bytes !== undefined) rows.push(["Payload per frame", String(m.expected_payload_bytes) + " B"]);
+    if (m.uart_load_percent !== undefined) rows.push(["UART load", num(m.uart_load_percent, 1) + " %"]);
+    if (m.warning) rows.push(["Warning", m.warning]);
+    html += kvTable(rows);
+    html += `<details style="margin-top:6px"><summary class="mini">Manifest (JSON)</summary><pre class="output">${esc(JSON.stringify(m, null, 2))}</pre></details>`;
+  }
+  if (patch.flash_command) {
+    html += `<div class="mini" style="margin-top:8px">Manual flash step – <b>not executed</b>:</div><code class="flash-cmd">${esc(patch.flash_command)}</code>`;
+  }
+  const fm = $("#fwManifest"); if (fm) fm.innerHTML = html;
+  const fvm = $("#fwViewManifest"); if (fvm) fvm.innerHTML = html;
+}
+
+/* ------------------------------------------------------------------ */
+/* Current view dispatch                                              */
+/* ------------------------------------------------------------------ */
+function renderCurrent() {
+  const snap = state.snap;
+  if (!snap) return;
+  const cfg = state.config;
+  const v = state.view;
+  if (v === "live") {
+    drawHeat($("#heat1"), snap.raw, "rx1", cfg);
+    drawHeat($("#heat2"), snap.raw, "rx2", cfg);
+    drawHeatMode($("#heatCombined"), snap.raw, cfg);
+    drawRangeProfile($("#profile"), snap.raw, cfg);
+    drawDopplerProfile($("#doppler"), snap.raw, cfg);
+    drawRTI($("#rangeTime"), cfg);
+    drawWaterfall($("#waterfall"), cfg);
+    renderDetections(snap);
+    drawMap($("#map"), false);
+    drawSurface($("#surface3d"));
+    renderVitals(snap, false);
+    updateBadges(snap);
+  } else if (v === "analyse") {
+    drawHeatMode($("#heatBig"), snap.raw, cfg, true);
+    drawRTI($("#rangeTimeBig"), cfg, true);
+    drawRangeProfile($("#profileBig"), snap.raw, cfg, true);
+    drawDopplerProfile($("#dopplerBig"), snap.raw, cfg, true);
+    drawWaterfall($("#waterfallBig"), cfg, true);
+    renderStats(snap);
+    updateBadges(snap);
+  } else if (v === "map") {
+    drawMap($("#mapBig"), true);
+    renderTargetInfo(snap);
+  } else if (v === "vitals") {
+    renderVitals(snap, true);
+    renderVitalStats(snap);
+    const m = $("#vitBigMeta");
+    if (m) m.textContent = `Breathing ${num(snap.vitals.fft_breath_bpm, 1)} BPM · Heart ${num(snap.vitals.fft_heart_bpm, 1)} BPM · ${state.phaseHist.length} samples`;
+  } else if (v === "record") {
+    renderFiles();
+  } else if (v === "firmware") {
+    renderPatch();
+  } else if (v === "log") {
+    renderFullLog();
+  }
+}
+
+function updateBadges(snap) {
+  if (!snap.raw || !snap.raw.ok) {
+    for (const id of ["badgeRx1", "badgeRx2", "badgeComb", "badgeBig"]) { const el = $("#" + id); if (el) el.textContent = "no data"; }
+    return;
+  }
+  const r = snap.raw;
+  const cfg = state.config;
+  const b1 = $("#badgeRx1"); if (b1) b1.textContent = `Peak ${num(r.rx1.peak_range_m, 2)} m · ${num(r.rx1.peak_power_db, 1)} dB`;
+  const b2 = $("#badgeRx2"); if (b2) b2.textContent = `Peak ${num(r.rx2.peak_range_m, 2)} m · ${num(r.rx2.peak_power_db, 1)} dB`;
+  const bc = $("#badgeComb"); if (bc) bc.textContent = `${r.rows}×${r.cols} · Peak ${num(r.combined.peak_range_m, 2)} m`;
+  const bb = $("#badgeBig"); if (bb) bb.textContent = `${r.rows}×${r.cols} · ${num(r.view.min_m, 2)}…${num(r.view.max_m, 2)} m`;
+  const f1 = $("#footRx1"); if (f1) f1.textContent = `${num(r.view.min_m, 2)}–${num(r.view.max_m, 2)} m · ${num(r.gain_db, 1)} dB Gain · ${r.heat_color.unit}`;
+  const f2 = $("#footRx2"); if (f2) f2.textContent = `${num(r.view.min_m, 2)}–${num(r.view.max_m, 2)} m · ${num(r.gain_db, 1)} dB Gain · ${r.heat_color.unit}`;
+  const mode = cfg.dsp_heat_mode || "magnitude";
+  const titles = {
+    magnitude: "RX1 + RX2 · Magnitude",
+    fusion: "RX1 + RX2 · fusion multispectrum",
+    motion: "Motion map · frame difference",
+    snr: "SNR map · signal-to-noise ratio",
+    difference: "Channel difference · RX1 − RX2",
+  };
+  const title = titles[mode] || titles.magnitude;
+  const ct = $("#combTitle"); if (ct) ct.textContent = title;
+  const bt = $("#bigTitle"); if (bt) bt.textContent = title + " · large";
+  const fc = $("#footComb");
+  if (fc) fc.textContent = `${r.view_mode} · ${title.split(" · ")[0]} · motion ${num(r.motion_db, 2)} dB · noise ${num(r.noise_db, 1)} dB · ${(r.detections || []).length} peaks`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Actions                                                            */
+/* ------------------------------------------------------------------ */
+async function act(action, extra = {}) {
+  try {
+    const data = await api("/api/action", { action, ...extra });
+    if (data.message) toast(data.message, data.ok ? "ok" : "err");
+    if (data.config) applyConfig(data.config);
+    if (data.recordings) { state.files = data.recordings; renderFiles(); }
+    if (data.patch) { state.lastPatch = data.patch; renderPatch(data.patch); }
+    if (action === "generate_patch") setTimeout(refreshState, 300);
+    if (action.startsWith("record") || action === "snapshot" || action === "export_csv") setTimeout(refreshState, 400);
+    return data;
+  } catch (e) {
+    toast("Action " + action + ": " + e.message, "err");
+    return null;
+  }
+}
+
+async function handleAction(action) {
+  const cfg = state.config;
+  switch (action) {
+    case "connect": await act("connect"); break;
+    case "disconnect": await act("disconnect"); break;
+    case "reconnect": await act("reconnect"); break;
+    case "version": await act("version"); break;
+    case "raw_on": await act("raw_on"); break;
+    case "raw_off": await act("raw_off"); break;
+    case "zone_read": await act("zone_read"); break;
+    case "zone_reset": await act("zone_reset"); break;
+    case "zone_set":
+      await act("zone_set", { min: cfg.radar_zone_min, max: cfg.radar_zone_max, width: cfg.radar_zone_width });
+      break;
+    case "echo": await act("echo", { value: cfg.radar_echo_value }); break;
+    case "flag": await act("flag", { value: cfg.radar_flag_value }); break;
+    case "custom_frame": await act("custom_frame", { type: cfg.cmd_custom_type, hex: cfg.cmd_custom_hex }); break;
+    case "record_start": await act("record_start"); break;
+    case "record_stop": await act("record_stop"); break;
+    case "snapshot": await act("snapshot"); break;
+    case "export_csv": await act("export_csv"); break;
+    case "auto_preset": await act("auto_preset"); break;
+    case "auto_off": await act("auto_off"); break;
+    case "generate_patch": {
+      const btn = document.querySelector('[data-act="generate_patch"]');
+      if (btn) { btn.disabled = true; btn.textContent = "Generating …"; }
+      await act("generate_patch");
+      if (btn) { btn.disabled = false; btn.textContent = "Create tuning image"; }
+      break;
+    }
+    case "clear_log": await act("clear_log"); state.logs = []; renderLogBar(); renderFullLog(); break;
+    case "reset_config":
+      if (confirm("Reset all parameters to defaults? COM port and recording path are preserved.")) {
+        await act("reset_config");
+      }
+      break;
+    default: toast("Unknown action: " + action, "err");
+  }
+}
+
+async function toggleAuto() {
+  const on = !state.config.auto_enabled;
+  if (on && !(state.config.auto_contrast || state.config.auto_threshold || state.config.auto_view || state.config.auto_map_size || state.config.auto_peak_target)) {
+    await act("auto_preset");
+  } else {
+    await setConfig({ auto_enabled: on }, true);
+  }
+}
+
+async function toggleConnect() {
+  if (state.connected) await act("disconnect");
+  else await act("connect");
+}
+
+function exportConfig() {
+  const blob = new Blob([JSON.stringify(state.config, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "advanced_dashboard_config.json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function downloadLog() {
+  const text = state.logs.map(l => `${new Date(l.t * 1000).toISOString()}\t${l.level}\t${l.msg}`).join("\n");
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "radar_console_log.txt";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+/* ------------------------------------------------------------------ */
+/* Tabs / events                                                      */
+/* ------------------------------------------------------------------ */
+function switchView(view) {
+  state.view = view;
+  $$("#mainTabs button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+  $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + view));
+  setTimeout(() => { if (state.snap) renderCurrent(); }, 30);
+  if (view === "record" || view === "firmware" || view === "log") refreshState();
+}
+
+function switchControl(panel) {
+  state.control = panel;
+  $$("#controlTabs button").forEach(b => b.classList.toggle("active", b.dataset.panel === panel));
+  $$(".side-panel").forEach(p => p.classList.toggle("active", p.dataset.panel === panel));
+}
+
+function bindEvents() {
+  $$("#mainTabs button").forEach(b => b.onclick = () => switchView(b.dataset.view));
+  $$("#controlTabs button").forEach(b => b.onclick = () => switchControl(b.dataset.panel));
+  $("#btnConnect").onclick = toggleConnect;
+  $("#btnAuto").onclick = toggleAuto;
+  $("#btnPreset").onclick = async () => {
+    const name = $("#presetSelect").value;
+    if (name) await act("apply_preset", { name });
+  };
+  $("#btnExportCfg").onclick = exportConfig;
+  $("#btnImportCfg").onclick = () => $("#cfgFile").click();
+  $("#cfgFile").onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    try {
+      const obj = JSON.parse(await f.text());
+      const updates = obj.updates && typeof obj.updates === "object" ? obj.updates : obj;
+      await setConfig(updates, true);
+      toast("Config imported.", "ok");
+    } catch (err) {
+      toast("Config import: " + err.message, "err");
+    }
+    e.target.value = "";
+  };
+  $("#btnDownloadLog").onclick = downloadLog;
+  $("#btnRefreshFiles").onclick = refreshState;
+  $("#btnLogScroll").onclick = () => {
+    state.logAutoScroll = !state.logAutoScroll;
+    $("#btnLogScroll").textContent = state.logAutoScroll ? "Auto-scroll on" : "Auto-scroll off";
+  };
+  $("#logToggle").onclick = () => {
+    const bar = $("#logbar");
+    bar.classList.toggle("collapsed");
+    $("#logToggle").textContent = bar.classList.contains("collapsed") ? "expand" : "collapse";
+  };
+  $("#search").oninput = () => {
+    const q = $("#search").value.trim().toLowerCase();
+    for (const panel of $$(".side-panel")) {
+      for (const group of $$(".group", panel)) {
+        let any = false;
+        for (const ctl of $$(".ctl", group)) {
+          const hit = !q || ctl.textContent.toLowerCase().includes(q) || (ctl.dataset.key || "").toLowerCase().includes(q);
+          ctl.style.display = hit ? "" : "none";
+          if (hit) any = true;
+        }
+        group.style.display = (!q || any) ? "" : "none";
+      }
+    }
+  };
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-act]");
+    if (!btn) return;
+    e.preventDefault();
+    handleAction(btn.dataset.act);
+  });
+  window.addEventListener("resize", () => {
+    clearTimeout(window.__rz);
+    window.__rz = setTimeout(() => { if (state.snap) renderCurrent(); }, 160);
+  });
+  // Heatmap hover and interactive 3D controls
+  for (const id of ["heat1", "heat2", "heatCombined", "heatBig", "rangeTime", "rangeTimeBig"]) {
+    bindHeatHover($("#" + id));
+  }
+  bindSurfaceInteractions($("#surface3d"));
+  // Keyboard shortcuts
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, select, textarea")) return;
+    if (e.key === "1") switchView("live");
+    else if (e.key === "2") switchView("analyse");
+    else if (e.key === "3") switchView("map");
+    else if (e.key === "4") switchView("vitals");
+    else if (e.key === "5") switchView("record");
+    else if (e.key === "6") switchView("firmware");
+    else if (e.key === "7") switchView("log");
+    else if (e.key.toLowerCase() === "a") toggleAuto();
+    else if (e.key.toLowerCase() === "c") toggleConnect();
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Init                                                               */
+/* ------------------------------------------------------------------ */
+async function init() {
+  buildControls();
+  bindEvents();
+  applyTheme();
+  applyVisibility();
+  await refreshState();
+  connectSSE();
+  setInterval(refreshState, 5000);
+}
+
+init().catch(e => {
+  console.error(e);
+  toast("Initialisierung: " + e.message, "err");
+});
+</script>
+</body>
+</html>

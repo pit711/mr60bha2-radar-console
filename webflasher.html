@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Radar Web Flasher</title>
+<style>
+  :root {
+    --bg: #070b0f;
+    --bg-2: #0a1016;
+    --panel: #0d141c;
+    --panel-2: #111a23;
+    --panel-3: #16222d;
+    --line: #1d2a36;
+    --line-2: #263746;
+    --text: #dce7f2;
+    --text-dim: #8fa3b8;
+    --text-faint: #5e7185;
+    --accent: #4cc9f0;
+    --accent-2: #7ae582;
+    --warn: #ffd166;
+    --danger: #ff5d73;
+    --violet: #b388ff;
+    --shadow: 0 12px 30px rgba(0,0,0,.35);
+    --radius: 14px;
+    --mono: ui-monospace, "Cascadia Mono", "Consolas", "SFMono-Regular", monospace;
+    --sans: "Segoe UI", system-ui, -apple-system, "Inter", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #e8eef4;
+      --bg-2: #f2f6fa;
+      --panel: #ffffff;
+      --panel-2: #f4f7fa;
+      --panel-3: #e9eff5;
+      --line: #cbd6e2;
+      --line-2: #b8c7d6;
+      --text: #17212b;
+      --text-dim: #4f6276;
+      --text-faint: #788a9c;
+      --accent: #0077b6;
+      --accent-2: #2a9d4b;
+      --warn: #b26a00;
+      --danger: #c81d3b;
+      --violet: #6b4fbb;
+      --shadow: 0 10px 24px rgba(30,50,70,.12);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 800px at 70% -10%, rgba(76,201,240,.10), transparent 60%),
+                radial-gradient(900px 500px at 0% 110%, rgba(247,37,133,.07), transparent 55%),
+                var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 18px 24px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(13,20,28,.92), rgba(7,11,15,.86));
+    backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .brand-mark {
+    width: 36px; height: 36px; display: grid; place-items: center;
+    border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--violet));
+    color: #041018; font-size: 20px; font-weight: 800; flex: 0 0 auto;
+  }
+  .brand h1 { margin: 0; font-size: 16px; letter-spacing: .3px; white-space: nowrap; }
+  .brand p { margin: 0; color: var(--text-dim); font-size: 12px; }
+  .header-links { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-2);
+    background: var(--panel-2); color: var(--text-dim); font-size: 12px; white-space: nowrap;
+  }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); }
+  .pill.ok i { background: var(--accent-2); box-shadow: 0 0 10px var(--accent-2); }
+  .pill.err i { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 24px 48px; }
+  .notice {
+    border: 1px solid rgba(255,93,115,.36);
+    background: linear-gradient(180deg, rgba(255,93,115,.10), rgba(255,93,115,.04));
+    color: var(--text); padding: 13px 15px; border-radius: 12px;
+    margin-bottom: 18px; font-size: 13px;
+  }
+  .notice strong { color: var(--danger); }
+  .notice.warn {
+    border-color: rgba(255,209,102,.34);
+    background: linear-gradient(180deg, rgba(255,209,102,.09), rgba(255,209,102,.03));
+  }
+  .notice.warn strong { color: var(--warn); }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 16px; min-width: 0;
+  }
+  .card.wide { grid-column: 1 / -1; }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 12px;
+  }
+  .card-head h2 { margin: 0; font-size: 14px; letter-spacing: .2px; }
+  .step {
+    display: inline-grid; place-items: center; width: 22px; height: 22px;
+    border-radius: 7px; background: var(--panel-3); color: var(--accent);
+    font-family: var(--mono); font-size: 11px; margin-right: 8px;
+  }
+  .muted { color: var(--text-dim); }
+  .small { font-size: 12px; }
+  .mono { font-family: var(--mono); }
+  .row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .btn {
+    appearance: none; border: 1px solid var(--line-2); background: var(--panel-3);
+    color: var(--text); border-radius: 9px; padding: 8px 13px; cursor: pointer;
+    font: inherit; font-size: 13px; transition: border-color .15s, background .15s, transform .05s;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.primary {
+    background: linear-gradient(135deg, rgba(76,201,240,.20), rgba(179,136,255,.16));
+    border-color: rgba(76,201,240,.55); color: var(--text); font-weight: 600;
+  }
+  .btn.danger {
+    background: linear-gradient(135deg, rgba(255,93,115,.22), rgba(247,37,133,.14));
+    border-color: rgba(255,93,115,.55); color: var(--text); font-weight: 600;
+  }
+  .btn.ghost { background: transparent; }
+  .status-line { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 12px; margin-top: 10px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex: 0 0 auto; }
+  .dot.ok { background: var(--accent-2); box-shadow: 0 0 10px var(--accent-2); }
+  .dot.err { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+  .field { margin-top: 10px; }
+  .field label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; }
+  input[type="file"] {
+    width: 100%; padding: 9px; border-radius: 9px; border: 1px dashed var(--line-2);
+    background: var(--bg-2); color: var(--text-dim); font: inherit; font-size: 12px;
+  }
+  input[type="file"]::file-selector-button {
+    margin-right: 10px; border: 1px solid var(--line-2); background: var(--panel-3);
+    color: var(--text); border-radius: 7px; padding: 6px 10px; cursor: pointer; font: inherit;
+  }
+  .kv { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 5px 12px; font-size: 12px; margin-top: 12px; }
+  .kv dt { color: var(--text-faint); }
+  .kv dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+  .check {
+    display: flex; align-items: flex-start; gap: 10px; padding: 11px 12px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2);
+    cursor: pointer; margin-top: 10px;
+  }
+  .check input { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; flex: 0 0 auto; }
+  .check span { font-size: 12px; color: var(--text-dim); }
+  .check strong { color: var(--text); }
+  .confirm {
+    display: none; margin-top: 12px; padding: 13px;
+    border: 1px solid rgba(255,93,115,.45); border-radius: 10px;
+    background: rgba(255,93,115,.07);
+  }
+  .confirm.show { display: block; }
+  .confirm p { margin: 0 0 10px; font-size: 12px; color: var(--text-dim); }
+  .progress {
+    height: 12px; border-radius: 999px; background: var(--bg-2);
+    border: 1px solid var(--line); overflow: hidden; margin-top: 12px;
+  }
+  .progress > i {
+    display: block; height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    transition: width .18s ease;
+  }
+  .progress-meta {
+    display: flex; justify-content: space-between; gap: 10px;
+    margin-top: 7px; font-size: 11px; color: var(--text-faint);
+    font-family: var(--mono);
+  }
+  .log-card { margin-top: 16px; }
+  .log {
+    height: 340px; overflow: auto; border: 1px solid var(--line);
+    border-radius: 10px; background: #05080b; padding: 10px 12px;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.7;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) .log { background: #f7fafc; }
+  }
+  .log-line { display: flex; gap: 10px; }
+  .log-time { color: var(--text-faint); flex: 0 0 auto; }
+  .log-msg { overflow-wrap: anywhere; white-space: pre-wrap; }
+  .log-line.info .log-msg { color: var(--text); }
+  .log-line.ok .log-msg { color: var(--accent-2); }
+  .log-line.warn .log-msg { color: var(--warn); }
+  .log-line.err .log-msg { color: var(--danger); }
+  .log-line.debug .log-msg { color: var(--text-faint); }
+  footer { max-width: 1180px; margin: 0 auto; padding: 0 24px 34px; color: var(--text-faint); font-size: 11px; }
+  code {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--panel-3); border: 1px solid var(--line);
+    padding: 1px 5px; border-radius: 5px;
+  }
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: 1fr; }
+    header { padding: 14px 16px; }
+    main, footer { padding-left: 16px; padding-right: 16px; }
+    .brand p { display: none; }
+    .log { height: 280px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="brand-mark">◈</div>
+    <div>
+      <h1>Radar Web Flasher</h1>
+      <p>MR60BHA2 / HLK-LD6002 · Andar ADT6101P · XMODEM-CRC</p>
+    </div>
+  </div>
+  <div class="header-links">
+    <span class="pill" id="pillSerial"><i></i><span id="pillSerialText">Serial: closed</span></span>
+    <a class="btn ghost small" href="/">← Dashboard</a>
+  </div>
+</header>
+
+<main>
+  <div class="notice">
+    <strong>Read this first.</strong> This page can overwrite the radar firmware. A wrong image,
+    an interrupted transfer or the wrong base image can make the device unusable until it is
+    recovered with a wired programmer. No firmware is included. You must select your own
+    legally obtained <em>full</em> image (16-byte header + application).
+  </div>
+
+  <div class="notice warn">
+    <strong>Before you start:</strong> disconnect the dashboard from the COM port. Only one
+    application can own the port. Use Chrome or Edge on desktop; Web Serial needs a secure
+    context, so open this page through the local dashboard
+    (<code>http://127.0.0.1:8770/flasher</code>) rather than as a file.
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <div class="card-head">
+        <h2><span class="step">1</span>Connect the radar</h2>
+        <span class="status-line"><span class="dot" id="connDot"></span><span id="connText">Not connected</span></span>
+      </div>
+      <p class="muted small" style="margin:0 0 12px">
+        Plug the XIAO USB-UART bridge into this computer. The radar is reached through the
+        bridge at <span class="mono">115200 baud, 8N1</span>.
+      </p>
+      <div class="row">
+        <button class="btn primary" id="btnConnect">Connect serial port</button>
+        <button class="btn" id="btnDisconnect" disabled>Disconnect</button>
+      </div>
+      <div class="field">
+        <label>Browser support</label>
+        <div class="small muted" id="supportText">Checking …</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2><span class="step">2</span>Select a firmware image</h2>
+        <span class="status-line"><span class="dot" id="fileDot"></span><span id="fileStatus">No image</span></span>
+      </div>
+      <div class="field" style="margin-top:0">
+        <label for="flashFile">Full firmware image (.bin)</label>
+        <input type="file" id="flashFile" accept=".bin,application/octet-stream">
+      </div>
+      <dl class="kv" id="fileInfo" hidden>
+        <dt>File</dt><dd id="fiName">–</dd>
+        <dt>Size</dt><dd id="fiSize">–</dd>
+        <dt>SHA-256</dt><dd id="fiSha">–</dd>
+        <dt>Stack pointer</dt><dd id="fiSp">–</dd>
+        <dt>Reset vector</dt><dd id="fiReset">–</dd>
+      </dl>
+      <p class="muted small" id="fileHint" style="margin:10px 0 0">
+        The image must start with the header magic <span class="mono">64 A5 64 A5</span>.
+        App-only images are rejected.
+      </p>
+    </section>
+
+    <section class="card wide">
+      <div class="card-head">
+        <h2><span class="step">3</span>Confirm and flash</h2>
+        <span class="status-line"><span class="dot" id="flashDot"></span><span id="flashStatus">Idle</span></span>
+      </div>
+      <label class="check" for="ackCheck">
+        <input type="checkbox" id="ackCheck">
+        <span>
+          I understand that this writes the selected image to the radar, that an interrupted
+          transfer can leave the device in the bootloader, and that I am using an image I am
+          allowed to flash. Nothing is written until I press <strong>Flash image</strong> and
+          then confirm once more.
+        </span>
+      </label>
+      <div class="row" style="margin-top:12px">
+        <button class="btn danger" id="flashStart" disabled>Flash image</button>
+        <button class="btn" id="flashAbort" disabled>Abort</button>
+        <span class="small muted" id="flashHint">Connect a port and select a valid image first.</span>
+      </div>
+      <div class="confirm" id="confirmPanel">
+        <p id="confirmText"></p>
+        <div class="row">
+          <button class="btn danger" id="flashConfirm">Yes, write the image now</button>
+          <button class="btn ghost" id="flashCancel">Cancel</button>
+        </div>
+      </div>
+      <div class="progress"><i id="flashBarFill"></i></div>
+      <div class="progress-meta">
+        <span id="flashPercent">0 %</span>
+        <span id="flashBlocks">0 / 0 blocks</span>
+      </div>
+    </section>
+
+    <section class="card wide log-card">
+      <div class="card-head">
+        <h2>Transfer log</h2>
+        <button class="btn ghost small" id="clearLog">Clear log</button>
+      </div>
+      <div class="log" id="flashLog" aria-live="polite"></div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  The dashboard and this flasher never flash automatically. Bootloader frame types
+  <code>0x3000</code> and <code>0x4000</code> are only sent by this page after the
+  two-step confirmation above. No firmware, keys or recordings are included in this project.
+</footer>
+
+<script>
+"use strict";
+
+const $ = (sel) => document.querySelector(sel);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const state = {
+  link: null,
+  port: null,
+  image: null,          // { name, data, sha, sp, reset }
+  flashing: false,
+  abort: false,
+  stage: "idle",
+};
+
+/* ------------------------------------------------------------------------- */
+/* Logging and UI                                                            */
+/* ------------------------------------------------------------------------- */
+
+function log(level, message) {
+  const line = document.createElement("div");
+  line.className = "log-line " + level;
+  const time = document.createElement("span");
+  time.className = "log-time";
+  time.textContent = new Date().toLocaleTimeString([], { hour12: false });
+  const msg = document.createElement("span");
+  msg.className = "log-msg";
+  msg.textContent = message;
+  line.append(time, msg);
+  const logEl = $("#flashLog");
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setPill(el, textEl, text, kind) {
+  el.classList.remove("ok", "err");
+  if (kind) el.classList.add(kind);
+  textEl.textContent = text;
+}
+
+function setConnection(connected, label) {
+  setPill($("#pillSerial"), $("#pillSerialText"),
+          connected ? "Serial: " + (label || "open") : "Serial: closed",
+          connected ? "ok" : "");
+  $("#connDot").className = "dot" + (connected ? " ok" : "");
+  $("#connText").textContent = connected ? "Connected" : "Not connected";
+  $("#btnConnect").disabled = connected || state.flashing;
+  $("#btnDisconnect").disabled = !connected || state.flashing;
+}
+
+function setFileStatus(kind, text) {
+  $("#fileDot").className = "dot" + (kind ? " " + kind : "");
+  $("#fileStatus").textContent = text;
+}
+
+function setFlashStatus(kind, text) {
+  $("#flashDot").className = "dot" + (kind ? " " + kind : "");
+  $("#flashStatus").textContent = text;
+}
+
+function setProgress(percent, blocks) {
+  const p = Math.max(0, Math.min(100, percent));
+  $("#flashBarFill").style.width = p.toFixed(1) + "%";
+  $("#flashPercent").textContent = p.toFixed(1) + " %";
+  if (blocks !== undefined) $("#flashBlocks").textContent = blocks;
+}
+
+function updateUi() {
+  const ready = !!(state.link && state.image && $("#ackCheck").checked && !state.flashing);
+  $("#flashStart").disabled = !ready;
+  $("#flashAbort").disabled = !state.flashing;
+  $("#flashFile").disabled = state.flashing;
+  $("#ackCheck").disabled = state.flashing;
+  $("#clearLog").disabled = state.flashing;
+  $("#btnConnect").disabled = !!state.link || state.flashing;
+  $("#btnDisconnect").disabled = !state.link || state.flashing;
+
+  if (state.flashing) {
+    $("#flashHint").textContent = "Transfer in progress. Do not unplug the device.";
+  } else if (!state.link) {
+    $("#flashHint").textContent = "Connect a port first.";
+  } else if (!state.image) {
+    $("#flashHint").textContent = "Select a valid full firmware image.";
+  } else if (!$("#ackCheck").checked) {
+    $("#flashHint").textContent = "Tick the confirmation checkbox to enable flashing.";
+  } else {
+    $("#flashHint").textContent = "Ready. Press Flash image to review the final confirmation.";
+  }
+}
+
+/* ------------------------------------------------------------------------- */
+/* TinyFrame and XMODEM helpers                                              */
+/* ------------------------------------------------------------------------- */
+
+function cksum(bytes) {
+  let c = 0;
+  for (const b of bytes) c ^= b;
+  return (~c) & 0xFF;
+}
+
+function buildFrame(type, payload = new Uint8Array(0), frameId = 0x8000) {
+  const len = payload.length;
+  const out = new Uint8Array(8 + len + (len ? 1 : 0));
+  out[0] = 0x01;
+  out[1] = (frameId >> 8) & 0xFF;
+  out[2] = frameId & 0xFF;
+  out[3] = (len >> 8) & 0xFF;
+  out[4] = len & 0xFF;
+  out[5] = (type >> 8) & 0xFF;
+  out[6] = type & 0xFF;
+  out[7] = cksum(out.subarray(0, 7));
+  if (len) {
+    out.set(payload, 8);
+    out[8 + len] = cksum(payload);
+  }
+  return out;
+}
+
+function crc16xmodem(bytes) {
+  let crc = 0;
+  for (const b of bytes) {
+    crc ^= b << 8;
+    for (let i = 0; i < 8; i++) {
+      crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF
+                           : (crc << 1) & 0xFFFF;
+    }
+  }
+  return crc & 0xFFFF;
+}
+
+function hex(bytes, max = 0) {
+  const slice = max && bytes.length > max ? bytes.subarray(0, max) : bytes;
+  const out = Array.from(slice, (b) => b.toString(16).padStart(2, "0")).join(" ");
+  return max && bytes.length > max ? out + " …" : out;
+}
+
+class SerialLink {
+  constructor(port) {
+    this.port = port;
+    this.reader = null;
+    this.writer = null;
+    this.buf = new Uint8Array(0);
+    this.closed = false;
+    this.aborted = false;
+    this.readTask = null;
+  }
+
+  async open() {
+    await this.port.open({
+      baudRate: 115200,
+      dataBits: 8,
+      stopBits: 1,
+      parity: "none",
+      flowControl: "none",
+      bufferSize: 65536,
+    });
+    this.reader = this.port.readable.getReader();
+    this.writer = this.port.writable.getWriter();
+    this.readTask = this._readLoop();
+  }
+
+  async _readLoop() {
+    try {
+      while (true) {
+        const { value, done } = await this.reader.read();
+        if (done) break;
+        if (!value || value.length === 0) continue;
+        const merged = new Uint8Array(this.buf.length + value.length);
+        merged.set(this.buf, 0);
+        merged.set(value, this.buf.length);
+        this.buf = merged;
+      }
+    } catch (err) {
+      if (!this.closed) {
+        log("warn", "Serial read stopped: " + (err && err.message ? err.message : String(err)));
+      }
+    }
+  }
+
+  async write(bytes) {
+    await this.writer.write(bytes);
+  }
+
+  drain() {
+    this.buf = new Uint8Array(0);
+  }
+
+  async readByte(timeoutMs) {
+    const deadline = performance.now() + Math.max(1, timeoutMs);
+    while (this.buf.length === 0) {
+      if (this.aborted) return -2;
+      if (this.closed) return -1;
+      if (performance.now() >= deadline) return -1;
+      await sleep(4);
+    }
+    const b = this.buf[0];
+    this.buf = this.buf.subarray(1);
+    return b;
+  }
+
+  async readBytes(count, timeoutMs) {
+    const deadline = performance.now() + Math.max(1, timeoutMs);
+    while (this.buf.length < count) {
+      if (this.aborted) return null;
+      if (this.closed) return null;
+      if (performance.now() >= deadline) return null;
+      await sleep(4);
+    }
+    const out = this.buf.slice(0, count);
+    this.buf = this.buf.subarray(count);
+    return out;
+  }
+
+  async close() {
+    this.closed = true;
+    try { if (this.reader) await this.reader.cancel(); } catch (_) {}
+    try { if (this.readTask) await this.readTask; } catch (_) {}
+    try { if (this.reader) this.reader.releaseLock(); } catch (_) {}
+    try { if (this.writer) await this.writer.close(); } catch (_) {}
+    try { if (this.writer) this.writer.releaseLock(); } catch (_) {}
+    try { await this.port.close(); } catch (_) {}
+  }
+}
+
+async function readFrame(link, timeoutMs) {
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
+    const b = await link.readByte(deadline - performance.now());
+    if (b === -2) return null;
+    if (b < 0) return null;
+    if (b !== 0x01) continue;
+    const rest = await link.readBytes(7, deadline - performance.now());
+    if (!rest) return null;
+    const head = new Uint8Array(8);
+    head[0] = 0x01;
+    head.set(rest, 1);
+    if (cksum(head.subarray(0, 7)) !== head[7]) continue;
+    const len = (head[3] << 8) | head[4];
+    const type = (head[5] << 8) | head[6];
+    if (len > 4096) continue;
+    let payload = new Uint8Array(0);
+    if (len) {
+      const body = await link.readBytes(len + 1, deadline - performance.now());
+      if (!body) return null;
+      if (cksum(body.subarray(0, len)) !== body[len]) continue;
+      payload = body.subarray(0, len);
+    }
+    return { type, payload };
+  }
+  return null;
+}
+
+async function queryVersion(link, timeoutMs = 1500) {
+  link.drain();
+  await link.write(buildFrame(0xFFFF));
+  const started = performance.now();
+  while (performance.now() - started < timeoutMs) {
+    const frame = await readFrame(link, Math.max(200, timeoutMs - (performance.now() - started)));
+    if (!frame) return null;
+    if (frame.type === 0xFFFF && frame.payload.length >= 1) {
+      return Array.from(frame.payload.slice(0, 4)).join(".");
+    }
+  }
+  return null;
+}
+
+async function waitForBootloaderCs(link, count, timeoutMs) {
+  const deadline = performance.now() + timeoutMs;
+  let streak = 0;
+  let announced = false;
+  while (performance.now() < deadline) {
+    const b = await link.readByte(deadline - performance.now());
+    if (b === -2) return false;
+    if (b < 0) return false;
+    if (b === 0x43) {
+      streak += 1;
+      if (!announced) {
+        log("info", "Bootloader ready byte 'C' received.");
+        announced = true;
+      }
+      if (streak >= count) return true;
+    } else {
+      streak = 0;
+    }
+  }
+  return false;
+}
+
+async function waitAck(link, timeoutMs) {
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
+    const b = await link.readByte(deadline - performance.now());
+    if (b === -2) return -2;
+    if (b < 0) return -1;
+    if (b === 0x06 || b === 0x15) return b;
+    if (b === 0x43) continue;   // repeated 'C' keep-alive
+    // Ignore any other byte.
+  }
+  return -1;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Image validation                                                          */
+/* ------------------------------------------------------------------------- */
+
+async function analyseImage(file) {
+  const data = new Uint8Array(await file.arrayBuffer());
+  if (data.length < 32) {
+    throw new Error("The file is too small to be a full firmware image.");
+  }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const magic = view.getUint32(0, false);
+  if (magic !== 0x64A564A5) {
+    throw new Error("Missing header magic 64 A5 64 A5. Select the full image, not an app-only image.");
+  }
+  const sp = view.getUint32(16, true);
+  const reset = view.getUint32(20, true);
+  const resetAddr = reset & ~1;
+  if (!(sp >= 0x20000000 && sp < 0x20100000)) {
+    throw new Error("Implausible stack pointer 0x" + sp.toString(16) + ".");
+  }
+  if ((reset & 1) !== 1 || resetAddr < 0x8000 || resetAddr >= 0x8000 + data.length) {
+    throw new Error("Implausible reset vector 0x" + reset.toString(16) + ".");
+  }
+  let sha = "unavailable";
+  if (window.crypto && crypto.subtle) {
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+    sha = Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  return { name: file.name, data, sha, sp, reset, resetAddr };
+}
+
+function renderImage(image) {
+  $("#fileInfo").hidden = false;
+  $("#fiName").textContent = image.name;
+  $("#fiSize").textContent = image.data.length.toLocaleString() + " bytes";
+  $("#fiSha").textContent = image.sha;
+  $("#fiSp").textContent = "0x" + image.sp.toString(16).padStart(8, "0");
+  $("#fiReset").textContent = "0x" + image.reset.toString(16).padStart(8, "0") +
+                              " → 0x" + image.resetAddr.toString(16);
+}
+
+$("#flashFile").addEventListener("change", async (event) => {
+  const file = event.target.files && event.target.files[0];
+  state.image = null;
+  $("#fileInfo").hidden = true;
+  $("#confirmPanel").classList.remove("show");
+  if (!file) {
+    setFileStatus("", "No image");
+    updateUi();
+    return;
+  }
+  setFileStatus("", "Checking …");
+  try {
+    const image = await analyseImage(file);
+    state.image = image;
+    renderImage(image);
+    setFileStatus("ok", "Valid image");
+    log("info", `Selected ${image.name} (${image.data.length} bytes, SHA-256 ${image.sha}).`);
+  } catch (err) {
+    setFileStatus("err", "Invalid image");
+    log("err", err.message);
+    $("#fileHint").textContent = err.message;
+  }
+  updateUi();
+});
+
+/* ------------------------------------------------------------------------- */
+/* Connect / disconnect                                                      */
+/* ------------------------------------------------------------------------- */
+
+$("#btnConnect").addEventListener("click", async () => {
+  if (!("serial" in navigator)) {
+    log("err", "Web Serial is not available in this browser. Use Chrome or Edge on desktop.");
+    return;
+  }
+  try {
+    const port = await navigator.serial.requestPort();
+    const link = new SerialLink(port);
+    await link.open();
+    state.port = port;
+    state.link = link;
+    setConnection(true, "115200 8N1");
+    log("ok", "Serial port opened at 115200 baud, 8N1.");
+    const version = await queryVersion(link, 2000);
+    if (version) log("info", "Radar version: " + version);
+    else log("warn", "No version response. The radar may be off or already in the bootloader.");
+  } catch (err) {
+    state.link = null;
+    state.port = null;
+    setConnection(false);
+    log("err", "Could not open the serial port: " + (err && err.message ? err.message : String(err)));
+    log("warn", "Close the dashboard's COM connection first; Windows allows only one owner.");
+  }
+  updateUi();
+});
+
+$("#btnDisconnect").addEventListener("click", async () => {
+  if (state.link) {
+    await state.link.close();
+    log("info", "Serial port closed.");
+  }
+  state.link = null;
+  state.port = null;
+  setConnection(false);
+  updateUi();
+});
+
+/* ------------------------------------------------------------------------- */
+/* Flashing                                                                  */
+/* ------------------------------------------------------------------------- */
+
+$("#ackCheck").addEventListener("change", () => {
+  if (!$("#ackCheck").checked) $("#confirmPanel").classList.remove("show");
+  updateUi();
+});
+
+$("#flashStart").addEventListener("click", () => {
+  if (!state.link || !state.image || !$("#ackCheck").checked) return;
+  const image = state.image;
+  $("#confirmText").textContent =
+    `About to write ${image.name} (${image.data.length.toLocaleString()} bytes, ` +
+    `SHA-256 ${image.sha}) to the radar at 115200 baud. ` +
+    `Do not unplug the device until the transfer log reports completion.`;
+  $("#confirmPanel").classList.add("show");
+});
+
+$("#flashCancel").addEventListener("click", () => {
+  $("#confirmPanel").classList.remove("show");
+});
+
+$("#flashAbort").addEventListener("click", () => {
+  if (!state.flashing) return;
+  state.abort = true;
+  if (state.link) state.link.aborted = true;
+  log("warn", "Abort requested. The device may remain in the bootloader; flash again to recover.");
+  setFlashStatus("err", "Aborting …");
+});
+
+async function xmodemSend(link, data) {
+  const blockSize = 128;
+  const total = Math.ceil(data.length / blockSize);
+  let packetNo = 1;
+
+  for (let block = 0; block < total; block++) {
+    if (link.aborted) throw new Error("Aborted by user.");
+    const offset = block * blockSize;
+    const chunk = new Uint8Array(blockSize).fill(0x1A);
+    const end = Math.min(offset + blockSize, data.length);
+    chunk.set(data.subarray(offset, end), 0);
+
+    const packet = new Uint8Array(3 + blockSize + 2);
+    packet[0] = 0x01;                       // SOH
+    packet[1] = packetNo & 0xFF;
+    packet[2] = 0xFF - (packetNo & 0xFF);
+    packet.set(chunk, 3);
+    const crc = crc16xmodem(chunk);
+    packet[3 + blockSize] = (crc >> 8) & 0xFF;
+    packet[4 + blockSize] = crc & 0xFF;
+
+    let acked = false;
+    for (let attempt = 1; attempt <= 16; attempt++) {
+      if (link.aborted) throw new Error("Aborted by user.");
+      await link.write(packet);
+      const response = await waitAck(link, 60000);
+      if (response === 0x06) {
+        acked = true;
+        break;
+      }
+      if (response === -2) throw new Error("Aborted by user.");
+      const why = response === -1 ? "timeout" : "NAK";
+      log("warn", `${why} for block ${block + 1}/${total} (attempt ${attempt}/16). Retrying …`);
+      await sleep(40);
+    }
+    if (!acked) {
+      throw new Error(`No ACK for block ${block + 1}/${total}. Transfer stopped.`);
+    }
+
+    packetNo = (packetNo + 1) & 0xFF;
+    const percent = ((block + 1) / total) * 100;
+    setProgress(percent, `${block + 1} / ${total} blocks`);
+    if ((block + 1) % 64 === 0 || block + 1 === total) {
+      log("debug", `Block ${block + 1}/${total} acknowledged (${percent.toFixed(1)} %).`);
+    }
+  }
+
+  // End of transmission.
+  let eotAcked = false;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await link.write(new Uint8Array([0x04]));
+    const response = await waitAck(link, 5000);
+    if (response === 0x06) {
+      eotAcked = true;
+      break;
+    }
+    log("warn", `No ACK for EOT (attempt ${attempt}/5).`);
+  }
+  if (!eotAcked) {
+    log("warn", "EOT was not acknowledged. The image may still have been accepted.");
+  }
+  log("ok", "Transfer complete. Waiting for the application to start …");
+  await sleep(3000);
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const version = await queryVersion(link, 1500);
+    if (version) {
+      log("ok", "Radar version after flashing: " + version);
+      return;
+    }
+    await sleep(500);
+  }
+  log("warn", "No version response after flashing. Reconnect the port and check the device.");
+}
+
+async function runFlash() {
+  const image = state.image;
+  const link = state.link;
+  if (!image || !link) return;
+
+  $("#confirmPanel").classList.remove("show");
+  state.flashing = true;
+  state.abort = false;
+  link.aborted = false;
+  $("#ackCheck").disabled = true;
+  setProgress(0, "0 / 0 blocks");
+  setFlashStatus("", "Starting …");
+  log("info", "=== Flash session started ===");
+  log("info", `Image: ${image.name} · ${image.data.length} bytes · SHA-256 ${image.sha}`);
+  updateUi();
+
+  try {
+    link.drain();
+    const before = await queryVersion(link, 1500);
+    if (before) log("info", "Radar version before flashing: " + before);
+    else log("warn", "No version response before flashing (continuing).");
+
+    log("info", "Sending update request: TinyFrame type 0x3000.");
+    await link.write(buildFrame(0x3000));
+
+    setFlashStatus("", "Waiting for the bootloader …");
+    const ready = await waitForBootloaderCs(link, 3, 30000);
+    if (!ready) {
+      throw new Error("Bootloader did not answer with 'C'. Power-cycle the radar and try again.");
+    }
+    link.drain();
+
+    setFlashStatus("", "Writing image …");
+    await xmodemSend(link, image.data);
+
+    setProgress(100, `${Math.ceil(image.data.length / 128)} / ${Math.ceil(image.data.length / 128)} blocks`);
+    setFlashStatus("ok", "Finished");
+    log("ok", "=== Flash session finished ===");
+  } catch (err) {
+    setFlashStatus("err", "Failed");
+    log("err", err && err.message ? err.message : String(err));
+    log("warn", "If the transfer stopped early, reconnect and flash the image again.");
+  } finally {
+    state.flashing = false;
+    state.abort = false;
+    if (link) link.aborted = false;
+    $("#ackCheck").disabled = false;
+    updateUi();
+  }
+}
+
+$("#flashConfirm").addEventListener("click", () => {
+  if (!state.flashing) runFlash();
+});
+
+/* ------------------------------------------------------------------------- */
+/* Startup                                                                   */
+/* ------------------------------------------------------------------------- */
+
+$("#clearLog").addEventListener("click", () => {
+  $("#flashLog").replaceChildren();
+});
+
+(function init() {
+  const supported = "serial" in navigator;
+  $("#supportText").textContent = supported
+    ? "Web Serial is available. Chrome/Edge desktop only."
+    : "Web Serial is not available. Use Chrome or Edge on desktop and open this page via localhost.";
+  if (!supported) {
+    log("err", "Web Serial is unavailable in this browser or context.");
+  }
+  setConnection(false);
+  setFileStatus("", "No image");
+  setFlashStatus("", "Idle");
+  setProgress(0, "0 / 0 blocks");
+  updateUi();
+  log("info", "No firmware is bundled. Select your own full .bin image.");
+})();
+</script>
+</body>
+</html>
