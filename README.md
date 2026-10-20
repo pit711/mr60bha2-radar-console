@@ -51,22 +51,19 @@ and raw/track operation on its own.
 
 | Part | Notes |
 |---|---|
-| [MR60BHA2 / HLK-LD6002](https://s.click.aliexpress.com/s/NdpwztbAIgDMmxGbP8fFks7yUFfsHjzlImSYmA68h7xlMRgzueFsRgokQ9f9hcpVKttxtQE2VzIoqkXJXrpOr6uR3zv7mP4CDO9CddoFf4t0QE5DXPy8Pgjhz4irfQSEjEGUmy5yF3A5gJ9h3NYjLMgqIMqa3zcpq5E2BC3W5EbV40Dm9buQxWpZzw1lbX8Zm2kZtNIa4KyDieNjsH7IU6Yv8StELKVvT9r4eFAaXPGhwHsgaDqdNcmY116r3GC2YvsOopeiiZPhJrV0cwgOQDSkW93v7gVKDqPkXyZF1oSWa6wSAOeznMFVlVZD9zyA9QdrGFo2UXqS0gFehbsDGfpb217YUkR2C52t6cEpAAo7G4eifesKnP7BPJWBOJW6SP3BPU5YHjkJrqsIvxCsTYRrA7VijGoRP7i7YIbiuCHGLemeKT1eECYuoAAOpTQJNPhsLZKkulVtm6v1wYggsC1uWIf8dTXQkSsQ6C9ZPsuTGU6YeJtAfHeMtWYFCu0dIoaBkjIirgIx6W655SdjJqABr73O2x9avxYWmnxORwoe3j1MmgmDpNJtlnO1gcr0JdnCD7XJhK5sLK9p8lW7XwpIM9ZwVQBO78Rxf10RDlAvTxqI7zVtu1ZrCMonsbF9Xf3dPzHjU6rVMFQZt9GtvUe0iNbKLh5lWuERUfYvViTn8xENVKarmKNMJPPR4Zqmp9wDvWJWXuZp8fJDATrxP7hDDc2RppAk18HBfC2rzGctA1XhOXrWvcekfi9kyOueXf9GEfyBg4i7n4mkh3HBh5pFbedue2j6kYm0lzZdObXKZxxKjQnl6iJBrNIhEmOdpd8GdgXfIylvmGkudFPC3HbDsSdvSchnvaJYtmpt5qEaeJnyszosRXkZsQbuVZmcpPVtUs8cmJrHM8ATeNsTJjKyS3x6JkLxCGO3iOjVBxnchYtmvBZU1Il229aHazxnwdhR9bXzczun1AKtOBDTkkcQGdzaQ0BYlroavqBUjr7uP) | Andar ADT6101P, ARM Cortex-M3, 2 TX / 2 RX, 58–62 GHz |
+| [MR60BHA2 / HLK-LD6002](https://s.click.aliexpress.com/e/_c2I9PPKt) | Andar ADT6101P, ARM Cortex-M3, 2 TX / 2 RX, 58–62 GHz |
 | Seeed Studio XIAO ESP32 | USB-CDC bridge between the PC and the radar UART |
-| USB cable | Data cable, not charge-only |
 
 ### Where to buy
 
-| <a href="https://espsoup.com/go/mr60bha2"><img src="https://espsoup.com/amzimg/mr60bha2" width="170" alt="Seeed Studio MR60BHA2 60 GHz mmWave kit"></a> |
-|:---:|
-| **Seeed Studio MR60BHA2 60 GHz mmWave kit** |
-| XIAO ESP32-C6 + HLK-LD6002 radar, ready to use as the bridge described here |
-| [View on Amazon](https://espsoup.com/go/mr60bha2) |
-
-USB-C data cable: [Amazon](https://espsoup.com/go/cable1) · [AliExpress](https://s.click.aliexpress.com/e/_c3qthcml)
+| <a href="https://espsoup.com/go/mr60bha2"><img src="https://espsoup.com/amzimg/mr60bha2" width="170" alt="Seeed Studio MR60BHA2 60 GHz mmWave kit"></a> | <a href="https://s.click.aliexpress.com/e/_c3DkZtWD"><img src="https://ae-pic-a1.aliexpress-media.com/kf/S82fdcc782d3b48e0892f731b7a71b8fdl.jpg" width="170" alt="XIAO ESP32-C6 with MR60BHA2 60 GHz radar kit"></a> | <a href="https://s.click.aliexpress.com/e/_c2I9PPKt"><img src="https://ae-pic-a1.aliexpress-media.com/kf/Sa8602bf63b2e4518bd4edf255c57a5d25.jpg" width="170" alt="HLK-LD6002 60 GHz radar module"></a> |
+|:---:|:---:|:---:|
+| **Seeed Studio MR60BHA2 kit** | **XIAO ESP32-C6 + MR60BHA2 kit** | **HLK-LD6002 radar module** |
+| XIAO ESP32-C6 + HLK-LD6002 radar, ready to use as the bridge described here | Same combination: radar and XIAO bridge on one board | Radar only — bring your own XIAO or USB-UART bridge |
+| [View on Amazon](https://espsoup.com/go/mr60bha2) | [View on AliExpress](https://s.click.aliexpress.com/e/_c3DkZtWD) | [View on AliExpress](https://s.click.aliexpress.com/e/_c2I9PPKt) |
 
 <sub>**Ad** · affiliate links: Amazon, AliExpress. I may earn a commission on qualifying purchases at no extra cost
-to you. As an Amazon Associate I earn from qualifying purchases. Product photo from Amazon. Check the product details
+to you. As an Amazon Associate I earn from qualifying purchases. Product photos from Amazon and AliExpress. Check the product details
 before you buy.</sub>
 
 Wire the radar UART to the XIAO (radar TX → XIAO RX, radar RX → XIAO TX, common
