@@ -56,7 +56,7 @@ and raw/track operation on its own.
 
 ### Where to buy
 
-| <a href="https://espsoup.com/go/mr60bha2"><img src="https://espsoup.com/amzimg/mr60bha2" width="170" alt="Seeed Studio MR60BHA2 60 GHz mmWave kit"></a> | <a href="https://s.click.aliexpress.com/e/_c3DkZtWD"><img src="https://ae-pic-a1.aliexpress-media.com/kf/S82fdcc782d3b48e0892f731b7a71b8fdl.jpg" width="170" alt="XIAO ESP32-C6 with MR60BHA2 60 GHz radar kit"></a> | <a href="https://s.click.aliexpress.com/e/_c2I9PPKt"><img src="https://ae-pic-a1.aliexpress-media.com/kf/Sa8602bf63b2e4518bd4edf255c57a5d25.jpg" width="170" alt="HLK-LD6002 60 GHz radar module"></a> |
+| <a href="https://espsoup.com/go/mr60bha2"><img src="https://espsoup.com/amzimg/mr60bha2" width="170" alt="Seeed Studio MR60BHA2 60 GHz mmWave kit"></a> | <a href="https://s.click.aliexpress.com/e/_c3DkZtWD"><img src="docs/buy/xiao-mr60bha2-kit.jpg" width="170" alt="XIAO ESP32-C6 with MR60BHA2 60 GHz radar kit"></a> | <a href="https://s.click.aliexpress.com/e/_c2I9PPKt"><img src="docs/buy/hlk-ld6002.jpg" width="170" alt="HLK-LD6002 60 GHz radar module"></a> |
 |:---:|:---:|:---:|
 | **Seeed Studio MR60BHA2 kit** | **XIAO ESP32-C6 + MR60BHA2 kit** | **HLK-LD6002 radar module** |
 | XIAO ESP32-C6 + HLK-LD6002 radar, ready to use as the bridge described here | Same combination: radar and XIAO bridge on one board | Radar only — bring your own XIAO or USB-UART bridge |
